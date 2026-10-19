@@ -111,22 +111,35 @@ class WhisperEngine(dataDir: File) : CaptionEngine {
         if (!part.renameTo(file)) throw FetchException("The speech model couldn’t be saved.")
     }
 
+    // whisper-jni names its beam-search option differently between releases, so find it by name.
+    private val BEAM: WhisperSamplingStrategy = enumValues<WhisperSamplingStrategy>()
+        .firstOrNull { it.name.startsWith("BEAM") || it.name.startsWith("BEAN") } ?: WhisperSamplingStrategy.GREEDY
+
     private fun params(o: AsrOptions): WhisperFullParams {
-        val p = WhisperFullParams(if (o.beam > 1) WhisperSamplingStrategy.BEAM_SEARCH else WhisperSamplingStrategy.GREEDY)
+        val p = WhisperFullParams(if (o.beam > 1) BEAM else WhisperSamplingStrategy.GREEDY)
         p.nThreads = if (o.threads > 0) o.threads else (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 8)
         p.language = o.language
         p.translate = o.translate
         p.temperature = o.temperature
         p.noSpeechThold = o.noSpeech
         p.initialPrompt = o.prompt.ifBlank { null }
-        p.maxLen = o.maxChars
-        p.splitOnWord = true
-        p.tokenTimestamps = true
-        p.suppressBlank = true
-        p.printProgress = false
-        p.printRealtime = false
-        p.printTimestamps = false
-        if (o.beam > 1) p.beamSearchBeamSize = o.beam
+        // These options are named differently (or missing) in some whisper-jni releases, so they're set by name.
+        p.option(o.maxChars, "maxLen", "maxLength", "max_len")
+        p.option(true, "splitOnWord", "split_on_word")
+        p.option(true, "tokenTimestamps", "token_timestamps")
+        p.option(true, "suppressBlank", "suppress_blank")
+        p.option(false, "printProgress", "print_progress")
+        p.option(false, "printRealtime", "print_realtime")
+        p.option(false, "printTimestamps", "print_timestamps")
+        if (o.beam > 1) p.option(o.beam, "beamSearchBeamSize", "beamSize", "beam_size")
         return p
+    }
+
+    /** Sets a whisper.cpp option if this whisper-jni release has a field by one of these names. */
+    private fun WhisperFullParams.option(value: Any, vararg names: String) {
+        for (name in names) {
+            val field = runCatching { javaClass.getField(name) }.getOrNull() ?: continue
+            if (runCatching { field.set(this, value) }.isSuccess) return
+        }
     }
 }

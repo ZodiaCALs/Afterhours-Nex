@@ -51,7 +51,7 @@ The desktop installers include their own Java runtime and FFmpeg, so there's not
 
 ## Building it
 
-You need a **full JDK 17 or later** (Temurin, Microsoft Build of OpenJDK or Zulu, not just a Java runtime) and **Gradle 8.13 or later**. For Android you also need the Android SDK. Android Studio and IntelliJ IDEA bring all of this.
+You need a **full JDK 17 or 21** (Temurin, Microsoft Build of OpenJDK or Zulu, not just a Java runtime) and **Gradle 9.6 or later**; it’s built with Gradle 9.8.1. The Gradle from Homebrew, SDKMAN or gradle.org works. For Android you also need the Android SDK. Android Studio and IntelliJ IDEA bring all of this.
 
 | To | Run |
 | --- | --- |
@@ -59,7 +59,7 @@ You need a **full JDK 17 or later** (Temurin, Microsoft Build of OpenJDK or Zulu
 | Run the Android app | Open this folder in Android Studio and run **androidApp** |
 | Test the shared core | `gradle :shared:desktopTest` |
 
-There's no Gradle wrapper in the project yet. Android Studio and IntelliJ create one when they open it, or run `gradle wrapper` once; after that, `./gradlew` works in place of `gradle`.
+There's no Gradle wrapper in the project yet. Run `gradle wrapper --gradle-version 9.8.1` once in this folder. After that, `./gradlew` works in place of `gradle` and always uses that version.
 
 ## Building release packages
 
@@ -175,13 +175,18 @@ The project's versions are pinned in `gradle/libs.versions.toml`:
 
 | Component | Version |
 | --- | --- |
-| Kotlin | 2.2.20 |
-| Compose Multiplatform | 1.9.0 |
-| Android Gradle Plugin | 8.11.1 |
-| Ktor | 3.3.0 |
-| Coil | 3.3.0 |
-| Media3 | 1.8.0 |
-| JavaFX | 21.0.6 |
+| Gradle | 9.8.1 |
+| Kotlin | 2.4.21 |
+| Compose Multiplatform | 1.12.2, with Material 3 1.12.0-alpha03 |
+| Android Gradle Plugin | 9.4.0 (compile SDK 37, target SDK 36) |
+| Ktor | 3.6.0 |
+| kotlinx.coroutines and kotlinx.serialization | 1.11.0 |
+| Coil | 3.6.1 |
+| Media3 | 1.11.1 |
+| JavaFX | 21.0.12 |
+| whisper-jni | 1.7.1 |
+| JAVE2 (FFmpeg) | 3.6.0 |
+| ZXing | 3.5.4 |
 
 ## The look
 

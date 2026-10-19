@@ -1,19 +1,18 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    alias(libs.plugins.androidApplication)
-    alias(libs.plugins.kotlinAndroid)
+    alias(libs.plugins.androidApplication)   // compiles Kotlin itself (built-in Kotlin, Android Gradle Plugin 9)
     alias(libs.plugins.composeCompiler)
 }
 
 android {
     namespace = "app.afterhours.android"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.afterhoursnex"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36   // the level Google Play requires; Android 17 (API 37) behaviour hasn't been tested yet
         versionCode = 1
         versionName = "1.0.0"
     }
