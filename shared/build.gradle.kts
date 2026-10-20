@@ -44,11 +44,9 @@ kotlin {
             implementation(libs.ktor.okhttp)
             implementation(libs.coroutines.android)
         }
-        val desktopMain by getting {
-            dependencies {
-                implementation(libs.ktor.okhttp)
-                implementation(libs.coroutines.swing)
-            }
+        getByName("desktopMain").dependencies {
+            implementation(libs.ktor.okhttp)
+            implementation(libs.coroutines.swing)
         }
     }
 }
