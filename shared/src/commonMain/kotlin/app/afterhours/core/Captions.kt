@@ -75,7 +75,8 @@ object Captions {
             val raw = lines.drop(i + 1).joinToString(" ").trim()
             var speaker = Regex("^<v(?:\\.[^\\s>]+)?\\s+([^>]+)>").find(raw)?.groupValues?.get(1)?.trim().orEmpty()
             var body = clean(raw)
-            if (speaker.isEmpty()) Regex("^([A-Z][\\w .'-]{1,30}):\\s+").find(body)?.let { speaker = it.groupValues[1]; body = body.substring(it.range.last + 1) }
+            // A speaker label in capitals, as caption files write them ("HOST: Good evening."); "Today: …" is just a sentence.
+            if (speaker.isEmpty()) Regex("^([A-Z][A-Z0-9 .'-]{1,30}):\\s+").find(body)?.let { speaker = it.groupValues[1].trim(); body = body.substring(it.range.last + 1) }
             out.add(Cue(stamp(m.groupValues[1]), stamp(m.groupValues[2]), body, speaker))
         }
         return out
