@@ -56,6 +56,10 @@ class Playback(private val player: AudioPlayer, private val library: Library, pr
         scope.launch { player.state.collect { onState(it) } }
     }
 
+    private val _preparing = MutableStateFlow<Pair<String, Float>?>(null)
+    /** While a video's audio is being fetched: what's happening and how far (-1 unknown, -2 failed). */
+    val preparing: StateFlow<Pair<String, Float>?> = _preparing.asStateFlow()
+
     fun play(ep: Episode, list: List<Episode> = library.sorted(ep.sid)) {
         if (_current.value?.id == ep.id) { toggle(); return }
         _current.value = ep
@@ -63,10 +67,29 @@ class Playback(private val player: AudioPlayer, private val library: Library, pr
         finished = null
         val show = library.show(ep.sid)
         val p = library.progress.value[ep.id]
-        val startMs = if (p != null && !p.done && p.t > 5) (p.t - 2) * 1000 else 0L
-        player.load(PlayItem(ep.id, ep.url, ep.title, show?.title.orEmpty(), ep.image.ifBlank { show?.image.orEmpty() }), startMs, play = true)
-        player.setSpeed(library.settings.value.speed)
-        loadCaptions(ep)
+        val startMs = if (p != null && !p.done && p.t > 5 && !ep.id.startsWith("radio:")) (p.t - 2) * 1000 else 0L
+        val subtitle = show?.title ?: ep.desc.takeIf { ep.sid == "radio" || ep.sid == "video" }.orEmpty()
+        _preparing.value = null
+        if (Video.handles(ep.url)) {
+            // a video: fetch its audio first, then play it
+            _preparing.value = "Getting the audio…" to -1f
+            scope.launch {
+                val file = try {
+                    Video.bridge!!.audio(ep.url) { msg, p -> if (_current.value?.id == ep.id) _preparing.value = msg to p }
+                } catch (e: Exception) {
+                    if (_current.value?.id == ep.id) _preparing.value = (e.message ?: "Couldn’t get this video’s audio.") to -2f
+                    return@launch
+                }
+                if (_current.value?.id != ep.id) return@launch
+                _preparing.value = null
+                player.load(PlayItem(ep.id, file, ep.title, subtitle, ep.image.ifBlank { show?.image.orEmpty() }), startMs, play = true)
+                player.setSpeed(library.settings.value.speed)
+            }
+        } else {
+            player.load(PlayItem(ep.id, ep.url, ep.title, subtitle, ep.image.ifBlank { show?.image.orEmpty() }), startMs, play = true)
+            player.setSpeed(library.settings.value.speed)
+        }
+        if (!ep.id.startsWith("radio:")) loadCaptions(ep)
     }
 
     fun toggle() { if (player.state.value.playing) player.pause() else player.play() }

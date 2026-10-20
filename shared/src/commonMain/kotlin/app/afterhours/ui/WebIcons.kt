@@ -18,6 +18,21 @@ private fun icon(name: String, vararg parts: Part): ImageVector = ImageVector.Bu
 
 /** The Afterhours web app's icons (its SVG sprite), drawn with the same fine strokes. Tint them like any icon. */
 object WebIcons {
+    val Globe: ImageVector by lazy {
+        icon("globe", Part("M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0", fill = false, width = 1.6f),
+            Part("M12 3c2.4 2.6 3.6 5.6 3.6 9s-1.2 6.4-3.6 9c-2.4-2.6-3.6-5.6-3.6-9s1.2-6.4 3.6-9Z", fill = false, width = 1.6f, join = StrokeJoin.Round),
+            Part("M3.6 9h16.8M3.6 15h16.8", fill = false, width = 1.6f, cap = StrokeCap.Round))
+    }
+    val Pin: ImageVector by lazy {
+        icon("pin", Part("M9 3.5h6l-1 5 3 3v1.8H7v-1.8l3-3-1-5Z", fill = false, width = 1.6f, join = StrokeJoin.Round),
+            Part("M12 13.3V20.5", fill = false, width = 1.6f, cap = StrokeCap.Round))
+    }
+    val Radio: ImageVector by lazy {
+        icon("radio", Part("M5 9h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z", fill = false, width = 1.7f, join = StrokeJoin.Round),
+            Part("M6.5 9 17 4.5", fill = false, width = 1.7f, cap = StrokeCap.Round),
+            Part("M13.5 14.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0", fill = false, width = 1.7f),
+            Part("M6.5 13.2h3.5M6.5 16.2h3.5", fill = false, width = 1.7f, cap = StrokeCap.Round))
+    }
     val Play: ImageVector by lazy { icon("play", Part("M8 5.6v12.8a1 1 0 0 0 1.52.85l10.2-6.4a1 1 0 0 0 0-1.7L9.52 4.75A1 1 0 0 0 8 5.6z", fill = true)) }
     val Pause: ImageVector by lazy { icon("pause", Part("M7.5 5H9.1A1.3 1.3 0 0 1 10.4 6.3V17.7A1.3 1.3 0 0 1 9.1 19H7.5A1.3 1.3 0 0 1 6.2 17.7V6.3A1.3 1.3 0 0 1 7.5 5Z", fill = true), Part("M14.9 5H16.5A1.3 1.3 0 0 1 17.8 6.3V17.7A1.3 1.3 0 0 1 16.5 19H14.9A1.3 1.3 0 0 1 13.6 17.7V6.3A1.3 1.3 0 0 1 14.9 5Z", fill = true)) }
     val Prev: ImageVector by lazy { icon("prev", Part("M6 6H6.2A1 1 0 0 1 7.2 7V17A1 1 0 0 1 6.2 18H6A1 1 0 0 1 5 17V7A1 1 0 0 1 6 6Z", fill = true), Part("M18.5 6.9v10.2a.9.9 0 0 1-1.38.76L9.6 12.76a.9.9 0 0 1 0-1.52l7.52-5.1a.9.9 0 0 1 1.38.76z", fill = true)) }

@@ -1,5 +1,6 @@
 package app.afterhours.ui
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -50,8 +51,22 @@ fun HomeScreen(app: AppState) {
     val hour = (((Clock.now() + Clock.utcOffsetMinutes() * 60_000L) / 3_600_000L) % 24).toInt()
     val greeting = when { hour < 5 -> tr("Up late"); hour < 12 -> tr("Good morning"); hour < 18 -> tr("Good afternoon"); else -> tr("Good evening") }
     val compact = LocalCompact.current
+    val update by app.update.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = bottomPadding()) {
         item { PageTitle(tr("Listen Now"), tr("$greeting. Here’s what’s new on your shelf.")) }
+        update?.let { r ->
+            item {
+                InfoCard(Modifier.padding(top = 14.dp)) {
+                    Text(tr("AfterhoursNex ${r.version} is available"), style = Type.epTitle, color = look.text)
+                    Text(tr("A new release is on GitHub."), style = Type.cardSub, color = look.text2, modifier = Modifier.padding(top = 4.dp))
+                    Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Pill(tr("Download"), WebIcons.Export, filled = true, onClick = { app.platform.openUrl(r.download) })
+                        Pill(tr("What’s new"), null, filled = false, onClick = { app.platform.openUrl(r.page) })
+                        Pill(tr("Not now"), null, filled = false, onClick = { app.skipUpdate() })
+                    }
+                }
+            }
+        }
         if (compact) item {
             Row(Modifier.padding(start = gutter, top = 14.dp)) { RoundButton(WebIcons.Gear, tr("Settings"), { app.tab(Screen.Prefs) }, size = 38.dp) }
         }
@@ -73,7 +88,7 @@ fun HomeScreen(app: AppState) {
             Text(tr(if (shows.any { it.status == "pending" }) "Gathering the latest episodes…" else "No episodes yet. Open a show to load it."),
                 Modifier.padding(horizontal = gutter, vertical = 8.dp), style = Type.body, color = look.text2)
         }
-        items(latest, key = { it.id }) { ep -> EpisodeRow(app, ep, showTitle = app.library.show(ep.sid)?.title, list = latest, modifier = Modifier.animateItem()) }
+        items(latest, key = { it.id }) { ep -> EpisodeRow(app, ep, showTitle = app.library.show(ep.sid)?.name, list = latest, modifier = Modifier.animateItem()) }
         if (picks.isNotEmpty()) item {
             CardRow(tr("Picked for you"), tr("Related shows that sit well next to your shelf."), onSeeAll = { app.tab(Screen.Discover) }) {
                 items(picks, key = { it.key }) { pick -> PickCard(app, pick, shows) }
@@ -88,14 +103,14 @@ private fun UpNextCard(app: AppState, ep: Episode, p: Progress?) {
     val ia = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Column(Modifier.width(174.dp).pressable(ia).clip(RoundedCornerShape(12.dp)).hoverFill(ia, RoundedCornerShape(12.dp), look.fill.copy(alpha = 0.5f))
         .clickable(ia, null) { app.playback.play(ep) }.padding(6.dp)) {
-        Artwork(ep.image.ifBlank { show?.image.orEmpty() }, show?.title ?: ep.title, Modifier.fillMaxWidth().aspectRatio(1f), corner = 10.dp)
+        Artwork(ep.image.ifBlank { show?.art.orEmpty() }, show?.name ?: ep.title, Modifier.fillMaxWidth().aspectRatio(1f), corner = 10.dp)
         if (p != null && p.d > 0) {
             Box(Modifier.padding(top = 9.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(look.fill2)) {
                 Box(Modifier.fillMaxWidth((p.t.toFloat() / p.d).coerceIn(0f, 1f)).fillMaxHeight().background(look.accent))
             }
         }
         Text(ep.title, style = Type.cardTitle, color = look.text, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
-        Text(show?.title.orEmpty(), style = Type.cardSub, color = look.text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        Text(show?.name.orEmpty(), style = Type.cardSub, color = look.text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -175,8 +190,13 @@ private fun PickCard(app: AppState, pick: Pick, shows: List<Show>, modifier: Mod
     val onShelf = shows.firstOrNull { it.preset == pick.key || it.title.equals(pick.title, ignoreCase = true) }
     val ia = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Column(modifier.pressable(ia).clip(RoundedCornerShape(12.dp)).hoverFill(ia, RoundedCornerShape(12.dp), look.fill.copy(alpha = 0.5f))
-        .clickable(ia, null, enabled = onShelf != null) { onShelf?.let { app.open(Screen.ShowPage(it.sid)) } }.padding(6.dp)) {
-        Artwork(onShelf?.image.orEmpty(), pick.title, Modifier.fillMaxWidth().aspectRatio(1f), corner = 10.dp)
+        .clickable(ia, null) {
+            if (onShelf != null) app.open(Screen.ShowPage(onShelf.sid))
+            else app.open(Screen.Preview(title = pick.title, term = pick.term.ifBlank { pick.title }, country = pick.countries.firstOrNull() ?: "us", site = pick.site))
+        }.padding(6.dp)) {
+        var cover by remember(pick.key) { mutableStateOf(onShelf?.image?.ifBlank { null } ?: Covers.cached(pick.key)) }
+        LaunchedEffect(pick.key) { if (cover.isBlank()) cover = Covers.find(pick) }      // only for cards on screen; remembered after
+        Artwork(cover, pick.title, Modifier.fillMaxWidth().aspectRatio(1f), corner = 10.dp)
         Text(pick.title, style = Type.cardTitle, color = look.text, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp))
         Text(pick.why, style = Type.cardSub, color = look.text2, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
         if (onShelf != null) {
@@ -230,10 +250,20 @@ fun ShelfScreen(app: AppState) {
             }
         }
     }
+    fun importAudio() {
+        scope.launch {
+            val files = app.platform.openAudio()
+            if (files.isEmpty()) return@launch
+            val s = app.library.addLocal(files)
+            app.say(tr("Imported ${files.size} audio files."))
+            app.open(Screen.ShowPage(s.sid))
+        }
+    }
     val catOf = remember { Catalog.data.presets.associate { it.key to it.cat } }
     val groups = remember(shows) {
-        val byCat = shows.groupBy { catOf[it.preset].orEmpty() }
-        Catalog.data.categories.mapNotNull { c -> byCat[c.id]?.let { tr(c.label) to it } } + listOfNotNull(byCat[""]?.let { tr("Added by you") to it })
+        val mine = shows.filter { it.group.isNotBlank() }.groupBy { it.group }.map { (g, list) -> g to list }       // the listener's groups first
+        val byCat = shows.filter { it.group.isBlank() }.groupBy { catOf[it.preset].orEmpty() }
+        mine + Catalog.data.categories.mapNotNull { c -> byCat[c.id]?.let { tr(c.label) to it } } + listOfNotNull(byCat[""]?.let { tr("Added by you") to it })
     }
     val addRow = @Composable { m: Modifier ->
         Row(m, verticalAlignment = Alignment.CenterVertically) {
@@ -243,6 +273,8 @@ fun ShelfScreen(app: AppState) {
                 contentAlignment = Alignment.Center) {
                 Text(tr(if (adding) "Adding…" else "Add"), style = Type.pill.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold), color = look.text)
             }
+            Spacer(Modifier.width(8.dp))
+            Pill(tr("Import audio"), WebIcons.Import, filled = false, onClick = { importAudio() }, modifier = Modifier.height(34.dp))
         }
     }
     LazyVerticalGrid(GridCells.Adaptive(if (compact) 150.dp else 170.dp), Modifier.fillMaxSize(),
@@ -259,7 +291,13 @@ fun ShelfScreen(app: AppState) {
         }
         for ((label, list) in groups) {
             item(key = "h-$label", span = { GridItemSpan(maxLineSpan) }) { CompositionLocalProvider(LocalGutter provides 6.dp) { SectionTitle(label, null) } }
-            items(list, key = { it.sid }) { s -> ShowTile(s) { app.open(Screen.ShowPage(s.sid)) } }
+            items(list, key = { it.sid }) { s ->
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    ShowTile(s, onMenu = { menu = true }) { app.open(Screen.ShowPage(s.sid)) }
+                    ShowMenu(app, s, menu) { menu = false }
+                }
+            }
         }
     }
 }
@@ -299,10 +337,10 @@ fun ShowScreen(app: AppState, sid: String) {
         item {
             Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(tint, look.bg)))) {
                 Column(Modifier.fillMaxWidth().padding(start = gutter, end = gutter, top = 14.dp, bottom = 8.dp)) {
-                    RoundButton(WebIcons.Chevleft, tr("Back"), { app.back() }, size = 32.dp, bg = look.bg.copy(alpha = 0.55f))
+                    RoundButton(WebIcons.Chevleft, tr("Back"), { app.back() }, size = 32.dp)
                     val texts = @Composable {
                         if (category != null) Text(tr(category), style = Type.meta, color = look.text2)
-                        Text(show.title, style = Type.pageTitle.copy(fontSize = if (compact) 30.sp else 40.sp, lineHeight = if (compact) 34.sp else 44.sp),
+                        Text(show.name, style = Type.pageTitle.copy(fontSize = if (compact) 30.sp else 40.sp, lineHeight = if (compact) 34.sp else 44.sp),
                             color = look.text, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                         if (show.author.isNotBlank()) Text(show.author, style = Type.body.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold), color = authorColor,
                             modifier = Modifier.padding(top = 6.dp).clickable(enabled = site.startsWith("http")) { app.platform.openUrl(site) })
@@ -310,18 +348,22 @@ fun ShowScreen(app: AppState, sid: String) {
                             modifier = Modifier.padding(top = 8.dp).widthIn(max = 620.dp))
                         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (list.isNotEmpty()) Pill(tr("Latest episode"), WebIcons.Play, filled = true, big = true, onClick = { app.playback.play(list.first(), list) })
-                            RoundButton(WebIcons.Refresh, tr("Check for new episodes"), { scope.launch { val err = app.library.refreshNow(sid); app.say(tr(err ?: "This show is up to date.")) } })
-                            RoundButton(WebIcons.Swap, tr("Change source"), { changing = true })
+                            if (show.source == "local") RoundButton(WebIcons.Plus, tr("Import audio files"), {
+                                scope.launch { val files = app.platform.openAudio(); if (files.isNotEmpty()) { app.library.addLocal(files); app.say(tr("Imported ${files.size} audio files.")) } }
+                            }) else {
+                                RoundButton(WebIcons.Refresh, tr("Check for new episodes"), { scope.launch { val err = app.library.refreshNow(sid); app.say(tr(err ?: "This show is up to date.")) } })
+                                RoundButton(WebIcons.Swap, tr("Change source"), { changing = true })
+                            }
                             if (site.startsWith("http")) RoundButton(WebIcons.Link, tr("Website"), { app.platform.openUrl(site) })
                             RoundButton(WebIcons.Trash, tr("Remove from library"), { removing = true })
                         }
                     }
                     if (compact) {
-                        Artwork(show.image, show.title, Modifier.padding(top = 14.dp, bottom = 16.dp).size(150.dp), corner = 12.dp)
+                        ShowArt(show, Modifier.padding(top = 14.dp, bottom = 16.dp).size(150.dp), corner = 12.dp)
                         texts()
                     } else {
                         Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Artwork(show.image, show.title, Modifier.size(190.dp), corner = 12.dp)
+                            ShowArt(show, Modifier.size(190.dp), corner = 12.dp)
                             Column(Modifier.padding(start = 28.dp).weight(1f)) { texts() }
                         }
                     }
@@ -342,7 +384,7 @@ fun ShowScreen(app: AppState, sid: String) {
         }
         item {
             SectionTitle(tr("Episodes"), null) {
-                Row(Modifier.height(30.dp).clip(CircleShape).background(look.fill)
+                Row(Modifier.height(30.dp).glass(CircleShape)
                     .clickable { app.library.updateSettings { it.copy(sort = if (it.sort == "oldest") "newest" else "oldest") } }.padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(WebIcons.Sort, contentDescription = null, tint = look.text, modifier = Modifier.size(15.dp))
@@ -385,8 +427,11 @@ fun ShowScreen(app: AppState, sid: String) {
     if (removing) {
         AlertDialog(
             onDismissRequest = { removing = false },
-            title = { Text(tr("Remove “${show.title}” from your library?")) },
-            confirmButton = { TextButton(onClick = { removing = false; app.library.remove(sid); app.back(); app.say(tr("Removed ${show.title}.")) }) { Text(tr("Remove")) } },
+            title = { Text(tr("Remove “${show.name}” from your library?")) },
+            confirmButton = { TextButton(onClick = {
+                removing = false; app.library.remove(sid); app.back()
+                app.sayUndo(tr("Removed ${show.name}.")) { app.library.undoRemove()?.let { app.say(tr("${it.name} is back.")) } }
+            }) { Text(tr("Remove")) } },
             dismissButton = { TextButton(onClick = { removing = false }) { Text(tr("Cancel")) } },
         )
     }
@@ -397,7 +442,10 @@ fun SearchScreen(app: AppState) {
     val scope = rememberCoroutineScope()
     val shows by app.library.shows.collectAsState()
     var query by remember { mutableStateOf(app.searchTerm) }
+    var topics by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<AppleShow>>(emptyList()) }
+    var episodes by remember { mutableStateOf<List<EpisodeHit>>(emptyList()) }
+    var videos by remember { mutableStateOf<List<VideoHit>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     fun run(q: String) {
@@ -412,7 +460,9 @@ fun SearchScreen(app: AppState) {
                     app.open(Screen.ShowPage(s.sid))
                 } else {
                     results = Apple.search(term, "us", 25).distinctBy { it.feedUrl }
-                    if (results.isEmpty()) error = tr("No shows found. Try fewer words, or paste the feed link.")
+                    episodes = if (topics) runCatching { Topics.episodes(term) }.getOrDefault(emptyList()) else emptyList()
+                    videos = if (topics) Video.bridge?.takeIf { it.available }?.let { b -> runCatching { b.search(term, 6) }.getOrDefault(emptyList()) }.orEmpty() else emptyList()
+                    if (results.isEmpty() && episodes.isEmpty() && videos.isEmpty()) error = tr("No shows found. Try fewer words, or paste the feed link.")
                 }
             } catch (e: FetchException) {
                 error = tr(e.message ?: "Couldn’t add that show.")
@@ -425,23 +475,44 @@ fun SearchScreen(app: AppState) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = bottomPadding()) {
         item { PageTitle(tr("Search"), tr("Apple’s podcast directory, or any feed or website.")) }
         item {
-            SearchBox(query, { query = it }, tr("Shows, topics, or a feed link"), onSubmit = { run(query) },
+            SearchBox(query, { query = it }, tr(if (topics) "A topic, such as cyberpunk edgerunners review" else "Shows, topics, or a feed link"), onSubmit = { run(query) },
                 modifier = Modifier.fillMaxWidth().padding(start = gutter, end = gutter, top = 18.dp), height = 40.dp)
+        }
+        item {
+            Row(Modifier.padding(start = gutter, end = gutter, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip(tr("Shows"), !topics) { if (topics) { topics = false; run(query) } }
+                Chip(tr("Episodes & topics"), topics) { if (!topics) { topics = true; run(query) } }
+            }
         }
         if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = gutter, vertical = 14.dp).clip(CircleShape), color = look.accent, trackColor = look.fill2) }
         error?.let { e -> item { Text(e, style = Type.body, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = gutter, vertical = 14.dp)) } }
-        if (results.isEmpty() && !busy) {
+        if (results.isEmpty() && episodes.isEmpty() && !busy) {
             item { SectionTitle(tr("Try a topic"), null) }
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = gutter), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Catalog.data.categories.flatMap { c -> c.keywords.take(1).map { it.first() } }) { term -> Chip(term, false) { query = term; run(term) } }
                 }
             }
-        } else if (results.isNotEmpty()) item { SectionTitle(tr("Shows"), null) }
-        items(results, key = { it.feedUrl }) { r ->
+        }
+        if (episodes.isNotEmpty()) {
+            item { SectionTitle(tr("Episodes"), tr("Single episodes about your topic, best matches first.")) }
+            items(episodes.take(25), key = { "e" + it.url }) { h -> TopicResult(app, h) }
+        }
+        val bridge = Video.bridge
+        if (topics && episodes.isNotEmpty() && bridge != null && bridge.manageable && !bridge.available) {
+            item { InfoCard(Modifier.padding(top = 8.dp)) { Text(tr("Videos about this, too"), style = Type.epTitle, color = look.text); VideoTools(app, Modifier.padding(top = 6.dp)) } }
+        }
+        if (videos.isNotEmpty()) {
+            item { SectionTitle(tr("Videos"), tr("Played as audio.")) }
+            items(videos, key = { "v" + it.url }) { v -> VideoResult(app, v) }
+        }
+        if (results.isNotEmpty()) item { SectionTitle(tr("Shows"), null) }
+        items(if (topics) results.take(8) else results, key = { it.feedUrl }) { r ->
             val on = shows.firstOrNull { it.feedUrl == r.feedUrl }
             Column(Modifier.padding(horizontal = gutter)) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .clickable { if (on != null) app.open(Screen.ShowPage(on.sid)) else app.open(Screen.Preview(title = r.title, feedUrl = r.feedUrl, image = r.artwork)) }
+                    .padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Artwork(r.artwork, r.title, Modifier.size(56.dp), corner = 8.dp)
                     Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                         Text(r.title, style = Type.epTitle, color = look.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -469,6 +540,17 @@ fun SettingsScreen(app: AppState) {
         LanguageSettings(app)
         SectionTitle(tr("Appearance"), null)
         Box(Modifier.padding(horizontal = 16.dp)) { Choice(listOf("system" to tr("System"), "light" to tr("Light"), "dark" to tr("Dark")), settings.theme) { v -> app.library.updateSettings { it.copy(theme = v) } } }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Transparency"), style = Type.body, modifier = Modifier.weight(1f))
+            Text("${(settings.glass * 100).roundToInt()}%", style = Type.cardSub, color = look.text2)
+        }
+        Slider(value = settings.glass, onValueChange = { v -> app.library.updateSettings { it.copy(glass = v) } }, valueRange = 0f..1f,
+            modifier = Modifier.padding(horizontal = 16.dp),
+            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = look.accent, inactiveTrackColor = look.fill2))
+        Text(tr("How much the sidebar, player and tab bar let the page show through. 0% is solid."), style = Type.cardSub, color = look.text2,
+            modifier = Modifier.padding(horizontal = 16.dp))
+        SwitchRow(tr("Reduce effects"), tr("No blurred cover behind Now Playing and no glow behind the page: less memory, and smoother on older computers."),
+            settings.lessEffects) { on -> app.library.updateSettings { it.copy(lessEffects = on) } }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(tr("Opening animation"), modifier = Modifier.weight(1f))
             Toggle(checked = settings.intro, onCheckedChange = { on -> app.library.updateSettings { it.copy(intro = on) } })
@@ -484,8 +566,11 @@ fun SettingsScreen(app: AppState) {
         }
         CaptionSettings(app)
         TranslateSettings(app)
+        ModelSettings(app)
         PhoneSettings(app)
+        CompanionSettings(app)
         StorageSettings(app)
+        UpdateSettings(app)
         SectionTitle(tr("Library"), null)
         val missing = shows.count { it.status == "missing" }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {

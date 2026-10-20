@@ -34,12 +34,41 @@ class WhisperEngine(dataDir: File) : CaptionEngine {
     private fun modelFile(name: String) = File(modelDir, "ggml-$name.bin")
     override fun hasModel(name: String) = modelFile(name).length() > 0
 
+    @Volatile private var uses = 0
+
     override suspend fun transcribe(url: String, startMs: Long, durationMs: Long, options: AsrOptions,
+                                    status: (String, Float) -> Unit, onCues: (List<Cue>) -> Unit) {
+        val token = ++uses
+        try {
+            transcribeInner(url, startMs, durationMs, options, status, onCues)
+        } finally {
+            // the model takes hundreds of megabytes: let it go when captions have been idle for a while
+            kotlin.concurrent.thread(isDaemon = true, name = "whisper-release") { Thread.sleep(45_000); if (token == uses) release() }
+        }
+    }
+
+    override fun modelBytes(name: String): Long = modelFile(name).length()
+
+    override suspend fun download(name: String, status: (String, Float) -> Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { if (!hasModel(name)) download(name, modelFile(name), status) }
+    }
+
+    @Synchronized override fun delete(name: String): Boolean {
+        if (loaded?.first == name) release()
+        return modelFile(name).delete()
+    }
+
+    @Synchronized override fun release() {
+        loaded?.second?.close()
+        loaded = null
+    }
+
+    private suspend fun transcribeInner(url: String, startMs: Long, durationMs: Long, options: AsrOptions,
                                     status: (String, Float) -> Unit, onCues: (List<Cue>) -> Unit) = withContext(Dispatchers.IO) {
         val ctx = context(options.model, status)
         status("Auto captions: recognising speech…", -1f)
         val proc = ProcessBuilder(Ffmpeg.path, "-nostdin", "-hide_banner", "-loglevel", "error", "-ss", String.format(Locale.ROOT, "%.2f", startMs / 1000.0),
-            "-i", url, "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1").redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            "-i", ffmpegInput(url), "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1").redirectError(ProcessBuilder.Redirect.DISCARD).start()
         try {
             val input = proc.inputStream
             val bytes = ByteArray(16000 * 30 * 4)          // 30 seconds of 16 kHz audio at a time

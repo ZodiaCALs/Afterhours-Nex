@@ -39,7 +39,7 @@ object Ffmpeg {
         if (out.length() > 0) { out.setLastModified(System.currentTimeMillis()); return out }
         val part = File(dir, "$name.part")
         val p = try {
-            ProcessBuilder(path, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", url, "-vn", "-c:a", "aac", "-b:a", "160k", "-f", "mp4", part.path)
+            ProcessBuilder(path, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", ffmpegInput(url), "-vn", "-c:a", "aac", "-b:a", "160k", "-f", "mp4", part.path)
                 .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start()
         } catch (e: Exception) {
             return null

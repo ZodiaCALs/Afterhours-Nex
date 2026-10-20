@@ -52,7 +52,7 @@ class JavaFxPlayer(private val convertDir: File) : AudioPlayer {
             publish()
         }
         thread(isDaemon = true, name = "afterhoursnex-link") {
-            val url = finalUrl(item.url)   // JavaFX won't follow a redirect from http to https, so follow them first
+            val url = if (item.url.startsWith("http")) finalUrl(item.url) else item.url   // JavaFX won't follow a redirect from http to https, so follow them first
             if (Ffmpeg.needsConversion(url)) prepare(url, token, startMs, play)
             else Platform.runLater { open(url, token, startMs, play, converted = false) }
         }

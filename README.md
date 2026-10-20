@@ -6,7 +6,7 @@
 
 AfterhoursNex is a small, private podcast player for Windows, macOS, Linux and Android. It's built from one Kotlin codebase with Kotlin Multiplatform and Compose Multiplatform, so it's a real app on each system. It draws its own interface, needs no browser, and plays in the background.
 
-**Version 1.1.0.** See [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
+**Version 1.2.0.** See [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
 
 ## Download
 
@@ -14,12 +14,12 @@ Get the file for your system from the project's GitHub Releases page.
 
 | System | File | To install |
 | --- | --- | --- |
-| Windows 10 or 11 | `AfterhoursNex-1.1.0.exe` or `.msi` | Run it. It installs just for you; no administrator rights needed. |
-| macOS 13 or later (Apple silicon) | `AfterhoursNex-1.1.0.dmg` | Open it and drag AfterhoursNex to Applications. |
-| Ubuntu, Debian and similar | `afterhoursnex_1.1.0-1_amd64.deb` | `sudo apt install ./afterhoursnex_1.1.0-1_amd64.deb` |
-| Fedora, openSUSE and similar | `afterhoursnex-1.1.0-1.x86_64.rpm` | `sudo dnf install ./afterhoursnex-1.1.0-1.x86_64.rpm` |
-| Windows or Linux, without installing | `AfterhoursNex-1.1.0-Windows-portable.zip` or `AfterhoursNex-1.1.0-Linux-portable.tar.gz` | Unpack it anywhere and run AfterhoursNex inside. |
-| Android 8 or later | `AfterhoursNex-1.1.0-Android.apk` | Open it on the phone and allow installing from that source. |
+| Windows 10 or 11 | `AfterhoursNex-1.2.0.exe` or `.msi` | Run it. It installs just for you; no administrator rights needed. |
+| macOS 13 or later (Apple silicon) | `AfterhoursNex-1.2.0.dmg` | Open it and drag AfterhoursNex to Applications. |
+| Ubuntu, Debian and similar | `afterhoursnex_1.2.0-1_amd64.deb` | `sudo apt install ./afterhoursnex_1.2.0-1_amd64.deb` |
+| Fedora, openSUSE and similar | `afterhoursnex-1.2.0-1.x86_64.rpm` | `sudo dnf install ./afterhoursnex-1.2.0-1.x86_64.rpm` |
+| Windows or Linux, without installing | `AfterhoursNex-1.2.0-Windows-portable.zip` or `AfterhoursNex-1.2.0-Linux-portable.tar.gz` | Unpack it anywhere and run AfterhoursNex inside. |
+| Android 8 or later | `AfterhoursNex-1.2.0-Android.apk` | Open it on the phone and allow installing from that source. |
 
 The desktop installers include their own Java runtime and FFmpeg, so there's nothing else to install. On Linux, JavaFX's audio playback also uses the system's FFmpeg libraries (`sudo apt install ffmpeg`).
 
@@ -46,6 +46,15 @@ The desktop installers include their own Java runtime and FFmpeg, so there's not
 - **In English, 简体中文 and 日本語.** Settings › Language follows the system by default. The interface, dates, durations and messages change language. Podcast titles and descriptions stay as their publishers wrote them.
 - **Use it on your phone from your computer.** With Settings › Use on your phone turned on, the desktop app gives a private link and a QR code. Opening it on a phone on the same Wi-Fi brings up the phone version of Afterhours, which can be added to the home screen. Feeds, search and websites go through the computer. The phone keeps its own shelf and progress, and auto captions aren’t available there yet.
 - **Background playback on Android,** with lock-screen, notification, headphone and car controls.
+- **AfterhoursNex Web (`web/`):** the lightest way to run it, in a browser, with a helper that uses only Python's standard library and about 30 MB of memory. Run `python3 web/afterhoursnex-web.py`. Releases include it as `AfterhoursNex-<version>-Web.zip`.
+- **A light desktop player:** the bundled FFmpeg decodes, and Java's own sound output plays. JavaFX is used only if that FFmpeg can't open https addresses.
+- **Your own audio:** import MP3, AAC, Ogg, Opus, FLAC, WAV and other files; they gather in "On this device".
+- **Update checker:** once a day, a look for a new release on GitHub (Settings › Updates). Builds from GitHub Actions know their repository; for a local build, set it in Settings or build with `-Pafterhours.repo=owner/name`.
+- **The same everywhere:** on Android, Settings › Your computer pairs the phone with the desktop app's phone link, and the phone gets the computer's auto captions and video podcasts over Wi-Fi.
+- **Radio:** public FM and AM stations, live, by region, from the Radio Browser directory.
+- **Topic search:** single episodes about any topic, as well as shows, and a preview of any show before you add it.
+- **Video podcasts as audio (desktop):** YouTube and Bilibili videos, channels and playlists, through yt-dlp if it's installed. yt-dlp isn't bundled, which keeps AfterhoursNex light: install it with `brew install yt-dlp`, `winget install yt-dlp` or `pip install yt-dlp`.
+- **Models in Settings:** download, use and delete speech recognition models. With Argos Translate installed (`pip install argostranslate`), the same goes for the translation language packs a local LibreTranslate server uses.
 - **The Afterhours design.** The same look as the Afterhours web app: a sidebar with your shows on wide windows, a tab bar and floating mini player on phones, episode rows with play pills, a floating player bar, and Now Playing over the blurred cover. Light and dark appearance.
 - **An opening animation.** The sunset icon rises, the name is written letter by letter, and the x of "Nex" is drawn in two pen strokes before the slogan appears. A tap skips it, and Settings can turn it off.
 
@@ -96,8 +105,8 @@ The **AfterhoursNex** workflow (`.github/workflows/kmp.yml`) runs on every chang
 Each run's files appear under its **Artifacts**. To publish a release with everything attached, push a version tag:
 
 ```
-git tag nex-v1.1.0
-git push origin nex-v1.1.0
+git tag nex-v1.2.0
+git push origin nex-v1.2.0
 ```
 
 The release uses this folder's `RELEASE_NOTES.md` as its description and includes `SHA256SUMS.txt`.
@@ -144,7 +153,7 @@ Unsigned installers work, but macOS and Windows warn people before opening them.
 - **Windows:** sign the installers with a code-signing certificate and Microsoft's `signtool`:
 
   ```
-  signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f certificate.pfx /p PASSWORD AfterhoursNex-1.1.0.exe
+  signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f certificate.pfx /p PASSWORD AfterhoursNex-1.2.0.exe
   ```
 
   Do the same for the `.msi`. Even signed, a new certificate shows SmartScreen warnings until it builds up a reputation.
@@ -192,14 +201,14 @@ macOS requires the version to be three numbers with the first above 0, such as `
 3. Commit and push. The workflow builds every package; check that the run is green, and try the files under its **Artifacts**.
 4. Tag the release, and push the tag:
    ```
-   git tag nex-v1.1.0
-   git push origin nex-v1.1.0
+   git tag nex-v1.2.0
+   git push origin nex-v1.2.0
    ```
    When every build passes, the workflow publishes the GitHub release with all the files and `SHA256SUMS.txt`.
 5. If a build fails after tagging, fix it, then move the tag to the fix and push it again:
    ```
-   git tag -d nex-v1.1.0 && git push --delete origin nex-v1.1.0
-   git tag nex-v1.1.0 && git push origin nex-v1.1.0
+   git tag -d nex-v1.2.0 && git push --delete origin nex-v1.2.0
+   git tag nex-v1.2.0 && git push origin nex-v1.2.0
    ```
 
 ## How it's put together

@@ -1,6 +1,6 @@
 # Builds AfterhoursNex: tests the shared core, builds the Android app, and builds the
 # desktop installers on real Windows, macOS and Linux machines (each installer can only be made on its own system).
-# Push a tag such as nex-v1.1.0 to publish a GitHub release with every download attached.
+# Push a tag such as nex-v1.2.0 to publish a GitHub release with every download attached.
 name: AfterhoursNex
 on:
   push:
@@ -119,9 +119,27 @@ jobs:
           name: release-desktop-${{ runner.os }}
           path: dist/
 
+  web:
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package AfterhoursNex Web
+        run: |
+          VERSION=$(grep -o 'packageVersion = "[^"]*"' desktopApp/build.gradle.kts | cut -d'"' -f2)
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cd web && zip -q "$GITHUB_WORKSPACE/dist/AfterhoursNex-$VERSION-Web.zip" afterhoursnex-web.py README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-web
+          path: dist/
+
   release:
     if: startsWith(github.ref, 'refs/tags/nex-v')
-    needs: [android, desktop]
+    needs: [android, desktop, web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

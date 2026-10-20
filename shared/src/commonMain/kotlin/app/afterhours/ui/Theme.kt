@@ -1,6 +1,7 @@
 package app.afterhours.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -28,16 +29,16 @@ data class Look(
 
 val LightLook = Look(
     bg = Color(0xFFFFFFFF), bg2 = Color(0xFFF5F5F7), side = Color(0xFFF2F2F5), bar = Color(0xD1FAFAFC),
-    fill = Color(0x1A767680), fill2 = Color(0x2E767680), text = Color(0xFF1D1D1F), text2 = Color(0xFF6E6E73), text3 = Color(0xFF8A8A8F),
+    fill = Color(0x1A767680), fill2 = Color(0x2E767680), text = Color(0xFF1D1D1F), text2 = Color(0xFF5E5E64), text3 = Color(0xFF737379),
     sep = Color(0x1F3C3C43), accent = Color(0xFFC8326C), accentInk = Color.White, accentSoft = Color(0x1AC8326C), on = Color(0xFF34C759),
     pop = Color.White, dark = false,
 )
 
 val DarkLook = Look(
-    bg = Color(0xFF18181A), bg2 = Color(0xFF222225), side = Color(0xFF1F1F22), bar = Color(0xCC2C2C30),
-    fill = Color(0x33767680), fill2 = Color(0x4D767680), text = Color(0xFFF5F5F7), text2 = Color(0xFFA1A1A6), text3 = Color(0xFF7C7C82),
-    sep = Color(0x17FFFFFF), accent = Color(0xFFFF6E9F), accentInk = Color(0xFF2B0715), accentSoft = Color(0x26FF6E9F), on = Color(0xFF30D158),
-    pop = Color(0xFF2C2C30), dark = true,
+    bg = Color(0xFF111114), bg2 = Color(0xFF1B1B1F), side = Color(0xFF17171B), bar = Color(0xC21E1E23),
+    fill = Color(0x2E9A9AA6), fill2 = Color(0x479A9AA6), text = Color(0xFFF4F4F7), text2 = Color(0xFFBDBDC5), text3 = Color(0xFF9A9AA3),
+    sep = Color(0x1CFFFFFF), accent = Color(0xFFFF82AE), accentInk = Color(0xFF2B0715), accentSoft = Color(0x2EFF82AE), on = Color(0xFF34D058),
+    pop = Color(0xFF232328), dark = true,
 )
 
 val LocalLook = staticCompositionLocalOf { LightLook }
@@ -47,6 +48,8 @@ val LocalGutter = staticCompositionLocalOf { 20.dp }
 val LocalCompact = staticCompositionLocalOf { true }
 /** Room left at the bottom of a page for the floating player. */
 val LocalBottomSpace = staticCompositionLocalOf { 0.dp }
+/** How see-through the sidebar, player and tab bar are: 0 solid, 1 the most glass-like (Settings › Appearance). */
+val LocalGlass = staticCompositionLocalOf { 0.2f }
 
 val look: Look @Composable @ReadOnlyComposable get() = LocalLook.current
 val gutter: Dp @Composable @ReadOnlyComposable get() = LocalGutter.current
@@ -97,6 +100,8 @@ fun AfterhoursTheme(theme: String, content: @Composable () -> Unit) {
 @Composable
 fun LookProvider(l: Look, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLook provides l) {
-        MaterialTheme(colorScheme = scheme(l), typography = Typo, content = content)
+        MaterialTheme(colorScheme = scheme(l), typography = Typo) {
+            CompositionLocalProvider(LocalContentColor provides l.text, content = content)
+        }
     }
 }

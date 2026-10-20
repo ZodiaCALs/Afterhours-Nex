@@ -1,6 +1,21 @@
 package app.afterhours
 
+import app.afterhours.core.AppInfo
+import app.afterhours.core.AsrOptions
+import app.afterhours.core.CaptionEngine
+import app.afterhours.core.FeedInfo
+import app.afterhours.core.VideoBridge
+import app.afterhours.core.VideoHit
 import app.afterhours.ui.PhoneLink
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import java.net.URLDecoder
 import app.afterhours.ui.PhoneState
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -30,7 +45,7 @@ import java.util.concurrent.Executors
  * computer's network address and only behind a private link: opening the link sets a cookie, and every
  * request without the right cookie is refused.
  */
-class PhoneServer(private val dir: File) : PhoneLink {
+class PhoneServer(private val dir: File, private val captions: CaptionEngine?, private val video: VideoBridge?, private val videoDir: File) : PhoneLink {
     private val _state = MutableStateFlow(PhoneState())
     override val state: StateFlow<PhoneState> = _state.asStateFlow()
     private val prefs = File(dir, "phone.properties")
@@ -101,6 +116,12 @@ class PhoneServer(private val dir: File) : PhoneLink {
             val hostHeader = ex.requestHeaders.getFirst("Host").orEmpty().substringBefore(':')
             if (hostHeader != host) return send(ex, 403, "text/plain; charset=utf-8", "This address isn’t allowed.".toByteArray())
             val query = ex.requestURI.rawQuery.orEmpty()
+            val path = ex.requestURI.rawPath
+            if (path.startsWith("/api/nex/")) {          // the AfterhoursNex phone app, borrowing this computer's captions and videos
+                val q = query.split('&').filter { '=' in it }.associate { it.substringBefore('=') to URLDecoder.decode(it.substringAfter('='), Charsets.UTF_8) }
+                if (!same(q["key"].orEmpty(), key)) return send(ex, 401, "text/plain; charset=utf-8", "Open the current phone link.".toByteArray())
+                return nex(ex, path, q)
+            }
             val given = query.split('&').firstOrNull { it.startsWith("key=") }?.removePrefix("key=")
             if (given != null) {
                 if (!same(given, key)) return send(ex, 401, "text/html; charset=utf-8", DENIED)
@@ -118,6 +139,87 @@ class PhoneServer(private val dir: File) : PhoneLink {
             runCatching { send(ex, 500, "text/plain; charset=utf-8", "Something went wrong on the computer.".toByteArray()) }
         } finally {
             ex.close()
+        }
+    }
+
+    private fun nex(ex: HttpExchange, path: String, q: Map<String, String>) {
+        val json = "application/json; charset=utf-8"
+        fun err(message: String) = buildJsonObject { put("error", message) }
+        when {
+            path == "/api/nex/ping" -> send(ex, 200, json, buildJsonObject {
+                put("name", AppInfo.NAME); put("version", AppInfo.VERSION); put("captions", captions != null); put("video", video?.available == true)
+            }.toString().toByteArray())
+            path == "/api/nex/captions" -> stream(ex) { line ->
+                val engine = captions ?: return@stream line(err("Auto captions aren’t available on this computer."))
+                val options = runCatching { Json.decodeFromString(AsrOptions.serializer(), q["options"].orEmpty()) }.getOrDefault(AsrOptions())
+                runBlocking {
+                    engine.transcribe(q["url"].orEmpty(), q["start"]?.toLongOrNull() ?: 0L, q["duration"]?.toLongOrNull() ?: 0L, options,
+                        status = { m, p -> line(buildJsonObject { put("status", m); put("progress", p) }) },
+                        onCues = { cues -> line(buildJsonObject { putJsonArray("cues") {
+                            cues.forEach { c -> addJsonObject { put("start", c.start); put("end", c.end); put("text", c.text); put("speaker", c.speaker) } } } }) })
+                }
+            }
+            path == "/api/nex/video/feed" -> {
+                val v = video?.takeIf { it.available } ?: return send(ex, 503, json, err("Install yt-dlp on this computer to play videos as audio.").toString().toByteArray())
+                val info = runBlocking { v.feed(q["url"].orEmpty(), q["sid"].orEmpty()) }
+                send(ex, 200, json, Json.encodeToString(FeedInfo.serializer(), info).toByteArray())
+            }
+            path == "/api/nex/video/search" -> {
+                val hits = video?.takeIf { it.available }?.let { v -> runBlocking { v.search(q["q"].orEmpty(), q["limit"]?.toIntOrNull() ?: 6) } }.orEmpty()
+                send(ex, 200, json, Json.encodeToString(ListSerializer(VideoHit.serializer()), hits).toByteArray())
+            }
+            path == "/api/nex/video/prepare" -> stream(ex) { line ->
+                val v = video?.takeIf { it.available } ?: return@stream line(err("Install yt-dlp on this computer to play videos as audio."))
+                val uri = runBlocking { v.audio(q["url"].orEmpty()) { m, p -> line(buildJsonObject { put("status", m); put("progress", p) }) } }
+                line(buildJsonObject { put("file", File(java.net.URI(uri)).name) })
+            }
+            path.startsWith("/api/nex/file/") -> file(ex, path.removePrefix("/api/nex/file/"))
+            else -> send(ex, 404, "text/plain; charset=utf-8", "Not found.".toByteArray())
+        }
+    }
+
+    /** A reply sent a line of JSON at a time, as the work goes on. */
+    private fun stream(ex: HttpExchange, body: ((JsonObject) -> Unit) -> Unit) {
+        ex.responseHeaders.set("Content-Type", "application/x-ndjson; charset=utf-8")
+        ex.sendResponseHeaders(200, 0)
+        val out = ex.responseBody
+        val line: (JsonObject) -> Unit = { o -> synchronized(out) { out.write((o.toString() + "\n").toByteArray()); out.flush() } }
+        try {
+            body(line)
+        } catch (e: Exception) {
+            runCatching { line(buildJsonObject { put("error", e.message ?: "Something went wrong on the computer.") }) }
+        }
+        runCatching { out.close() }
+    }
+
+    /** A prepared video's audio, with byte ranges so the phone can seek. */
+    private fun file(ex: HttpExchange, name: String) {
+        val f = File(videoDir, name)
+        if (!Regex("""^[\w.-]+$""").matches(name) || !f.isFile) return send(ex, 404, "text/plain; charset=utf-8", "Not found.".toByteArray())
+        val total = f.length()
+        val range = ex.requestHeaders.getFirst("Range")?.let { Regex("""bytes=(\d*)-(\d*)""").find(it) }
+        var start = 0L
+        var end = total - 1
+        if (range != null) {
+            range.groupValues[1].toLongOrNull()?.let { start = it }
+            range.groupValues[2].toLongOrNull()?.let { end = minOf(it, total - 1) }
+        }
+        val length = (end - start + 1).coerceAtLeast(0)
+        ex.responseHeaders.set("Content-Type", if (name.endsWith(".m4a") || name.endsWith(".mp4")) "audio/mp4" else "application/octet-stream")
+        ex.responseHeaders.set("Accept-Ranges", "bytes")
+        if (range != null) ex.responseHeaders.set("Content-Range", "bytes $start-$end/$total")
+        ex.sendResponseHeaders(if (range != null) 206 else 200, length)
+        java.io.RandomAccessFile(f, "r").use { raf ->
+            raf.seek(start)
+            val buf = ByteArray(64 * 1024)
+            var left = length
+            ex.responseBody.use { out ->
+                while (left > 0) {
+                    val n = raf.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                    if (n < 0) break
+                    out.write(buf, 0, n); left -= n
+                }
+            }
         }
     }
 

@@ -18,7 +18,18 @@ data class Show(
     val description: String = "",
     val link: String = "",
     val addedAt: Long = 0,
+    val alias: String = "",              // a name the listener gave it
+    val pinned: Boolean = false,         // kept at the top of the sidebar
+    val group: String = "",              // the listener's own group
+    val cover: String = "",              // a cover the listener chose (an image address)
+    val coverStyle: String = "",         // or one they designed: "g=<gradient>;f=<serif|sans>;t=<text>"
 )
+
+/** The cover to show: the listener's own, or the show's. */
+val Show.art: String get() = cover.ifBlank { image }
+
+/** The name to show: the listener's own, or the show's. */
+val Show.name: String get() = alias.ifBlank { if (source == "local") tr(title) else title }
 
 @Serializable
 data class Episode(
@@ -55,8 +66,16 @@ data class Settings(
     val translator: String = "mymemory", // or "libre" (your own LibreTranslate server)
     val libreUrl: String = "",
     val libreKey: String = "",
+    val glass: Float = 0.2f,
+    val lessEffects: Boolean = false,  // no blurred cover behind Now Playing and no glow: less graphics memory           // transparency of the sidebar, player and tab bar: 0 solid, 1 most see-through
+    val companion: String = "",         // on a phone: the computer's phone link, for its auto captions and video podcasts
+    val checkUpdates: Boolean = true,
+    val updateRepo: String = "",        // "owner/name" on GitHub; blank uses the repository the app was built from
+    val lastUpdateCheck: Long = 0,
+    val skippedVersion: String = "",
 )
 
+@Serializable
 data class FeedInfo(
     val title: String,
     val author: String,
@@ -70,7 +89,7 @@ class FetchException(message: String) : Exception(message)
 
 object AppInfo {
     const val NAME = "AfterhoursNex"
-    const val VERSION = "1.1.0"
+    const val VERSION = "1.2.0"
     const val SLOGAN = "How many times do I have left to see you again in my life?"
 }
 

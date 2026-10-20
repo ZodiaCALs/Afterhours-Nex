@@ -46,6 +46,14 @@ class Translator(private val storage: Storage) {
         if (added) lock.withLock { save(target) }
     }
 
+    /** How many translated lines are kept for each language. */
+    fun counts(): Map<String, Int> = storage.list("tr-").map { it.removePrefix("tr-").removeSuffix(".json") }.associateWith { t -> tables.getOrPut(t) { load(t) }.size }
+
+    fun clear(target: String) { storage.delete("tr-$target.json"); tables.remove(target); _version.value++ }
+
+    /** Translates one line now, without keeping it: for trying a service. */
+    suspend fun sample(line: String, target: String, s: Settings): String? = runCatching { translate(line, guessLanguage(line), target, s) }.getOrNull()
+
     fun clear(): Int {
         val names = storage.list("tr-")
         names.forEach { storage.delete(it) }

@@ -32,7 +32,8 @@ object Motion {
 fun Modifier.pressable(interaction: MutableInteractionSource, scaleTo: Float = 0.97f): Modifier {
     val pressed by interaction.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed) scaleTo else 1f, tween(if (pressed) 120 else 320, easing = Motion.EaseOut), label = "press")
-    return this.graphicsLayer { scaleX = s; scaleY = s }
+    val dim by animateFloatAsState(if (pressed) 0.72f else 1f, tween(if (pressed) 90 else 260), label = "press")
+    return this.graphicsLayer { scaleX = s; scaleY = s; alpha = dim }
 }
 
 /** A soft highlight under the pointer (desktop and Android with a mouse). */

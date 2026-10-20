@@ -1,5 +1,8 @@
 package app.afterhours.ui
 
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.em
@@ -72,6 +75,7 @@ fun CaptionBlock(app: AppState) {
                     app.say(tr(if (app.playback.useCaptionFile(f.name, f.bytes)) "Loaded captions from ${f.name}." else "That file has no timed captions I can read."))
                 }
             }
+            TranslatePill(app)
             if (engine != null) when {
                 cap.working && cap.source == "auto" -> GlassPill(tr("Stop"), Icons.Filled.Stop) { app.playback.stopCaptions() }
                 cap.cues.isEmpty() -> GlassPill(tr("Caption this episode"), WebIcons.Wave) { app.playback.autoCaption() }
@@ -107,7 +111,7 @@ fun Lyrics(app: AppState, cues: List<Cue>, modifier: Modifier = Modifier, compac
     val settings by app.library.settings.collectAsState()
     val version by app.translator.version.collectAsState()
     val target = if (settings.translateTo == "auto") I18n.lang else settings.translateTo
-    LaunchedEffect(active.coerceAtLeast(0), settings.translate, target, cues) {
+    LaunchedEffect(active.coerceAtLeast(0), settings.translate, target, cues.size) {
         if (settings.translate) app.translateAhead(cues, active.coerceAtLeast(0), target, settings)
     }
     val list = rememberLazyListState()
@@ -117,40 +121,60 @@ fun Lyrics(app: AppState, cues: List<Cue>, modifier: Modifier = Modifier, compac
     LaunchedEffect(dragged) {
         if (dragged) wasDragged = true else if (wasDragged) { heldUntil = Clock.now() + 3500; wasDragged = false }
     }
+    // The follower: whenever the spoken line, the captions or the translations change, ease the spoken line to its place,
+    // moving a share of the remaining distance each frame. One motion only, so nothing restarts or races when lines grow
+    // as translations arrive; and it asks for frames only until the line is in place.
+    val activeNow by rememberUpdatedState(active)
+    val countNow by rememberUpdatedState(cues.size)
+    LaunchedEffect(list) {
+        snapshotFlow { Triple(activeNow, version, countNow) }.collectLatest {
+            var last = 0L
+            while (true) {
+                val idx = activeNow
+                if (idx < 0 || dragged || Clock.now() < heldUntil) break
+                val info = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }
+                if (info == null) { list.scrollToItem(idx); break }          // far away (a seek): go straight there
+                val distance = info.offset.toFloat()                          // 0 puts the line exactly at the lead
+                if (kotlin.math.abs(distance) < 0.5f) break
+                val moved = withFrameNanos { now ->
+                    val dt = if (last == 0L) 1f / 60f else ((now - last) / 1e9f).coerceIn(0.001f, 0.05f)
+                    last = now
+                    list.dispatchRawDelta(distance * (1f - kotlin.math.exp(-dt / 0.14f)))
+                }
+                if (kotlin.math.abs(moved) < 0.01f) break                     // at an end of the list: nothing more to do
+            }
+        }
+    }
     BoxWithConstraints(modifier.fadingEdges(0.14f, if (compact) 0.7f else 0.78f)) {
         val lead = maxHeight * (if (compact) 0.3f else 0.32f)
-        LaunchedEffect(active, cues) {
-            if (active < 0 || dragged || Clock.now() < heldUntil) return@LaunchedEffect
-            val info = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active }
-            // item offsets start below the top padding, so 0 puts the line exactly at the lead
-            if (info != null) list.animateScrollBy(info.offset.toFloat(), tween(680, easing = Motion.EaseOut)) else list.scrollToItem(active)
-        }
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = lead, bottom = maxHeight * (if (compact) 0.6f else 0.45f))) {
             itemsIndexed(cues, key = { i, _ -> i }) { i, cue ->
                 val speaker = cue.speaker.isNotBlank() && cue.speaker != cues.getOrNull(i - 1)?.speaker
                 val translated = if (settings.translate && version >= 0) app.translator.get(cue.text.trim(), target)?.takeIf { it != cue.text.trim() } else null
-                LyricLine(cue, speaker, i == active, compact, translated) { app.playback.seek(cue.start) }
+                LyricLine(cue, speaker, i == active, compact, settings.translate, translated) { app.playback.seek(cue.start) }
             }
         }
     }
 }
 
 @Composable
-private fun LyricLine(cue: Cue, speaker: Boolean, active: Boolean, compact: Boolean, translated: String?, onClick: () -> Unit) {
+private fun LyricLine(cue: Cue, speaker: Boolean, active: Boolean, compact: Boolean, translating: Boolean, translated: String?, onClick: () -> Unit) {
     val ia = remember { MutableInteractionSource() }
     val hovered by ia.collectIsHoveredAsState()
     val color by animateColorAsState(when { active -> Color.White; hovered -> Color.White.copy(alpha = 0.58f); else -> Color.White.copy(alpha = 0.32f) },
         tween(420, easing = Motion.EaseStd), label = "lyric")
     val scale by animateFloatAsState(if (active) 1f else 0.975f, tween(520, easing = Motion.EaseOut), label = "lyric")
     val second by animateColorAsState(if (active) Color.White.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.24f), tween(420, easing = Motion.EaseStd), label = "lyric")
-    Column(Modifier.fillMaxWidth().padding(bottom = if (compact) 18.dp else 22.dp).animateContentSize(tween(420, easing = Motion.EaseOut))
+    Column(Modifier.fillMaxWidth().padding(bottom = if (compact) 18.dp else 22.dp)
         .graphicsLayer { scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0f, 0.5f) }
         .hoverable(ia).clickable(ia, null, onClick = onClick)) {
         if (speaker) Text(cue.speaker, style = Type.meta.copy(fontSize = 13.sp, letterSpacing = 0.02.em), color = Color.White.copy(alpha = 0.55f),
             modifier = Modifier.padding(bottom = 4.dp))
-        Text(cue.text, color = color, modifier = Modifier.widthIn(max = 600.dp),
-            style = TextStyle(fontSize = if (compact) 22.sp else 30.sp, lineHeight = if (compact) 28.sp else 38.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.015).em))
-        if (translated != null) Text(translated, color = second, modifier = Modifier.padding(top = 6.dp).widthIn(max = 600.dp),
+        Text(cue.text, color = color, modifier = Modifier.widthIn(max = 560.dp),
+            style = TextStyle(fontSize = if (compact) 20.sp else 26.sp, lineHeight = if (compact) 26.sp else 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.015).em))
+        // with translation on, the line below is always there (empty until it arrives), so lines don't grow and push the list
+        if (translating) Text(translated ?: " ", color = if (translated == null) Color.Transparent else second, minLines = 1, maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp).widthIn(max = 600.dp),
             style = TextStyle(fontSize = if (compact) 16.sp else 19.sp, lineHeight = if (compact) 21.sp else 25.sp, fontWeight = FontWeight.SemiBold))
     }
 }
@@ -232,5 +256,22 @@ fun CaptionSettings(app: AppState) {
             Text(tr("Kept on this computer, so they load instantly next time."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         TextButton(onClick = { val n = app.library.clearSavedCaptions(); app.say(tr(if (n > 0) "Deleted $n saved captions." else "There were no saved captions.")) }) { Text(tr("Delete")) }
+    }
+}
+
+/** Translate the captions: off, or into a language, chosen right here. */
+@Composable
+private fun TranslatePill(app: AppState) {
+    val s by app.library.settings.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    Box {
+        GlassPill(if (s.translate) tr("Translating · ${languageName(s.translateTo)}") else tr("Translate"), WebIcons.Globe) { open = true }
+        GlassMenu(open, { open = false }, width = 220.dp) {
+            MenuLabel(tr("Translate captions"))
+            MenuItem(tr("Off"), { app.library.updateSettings { it.copy(translate = false) }; open = false }, checked = !s.translate)
+            TRANSLATE_TO.forEach { (code, _) ->
+                MenuItem(languageName(code), { app.library.updateSettings { it.copy(translate = true, translateTo = code) }; open = false }, checked = s.translate && s.translateTo == code)
+            }
+        }
     }
 }

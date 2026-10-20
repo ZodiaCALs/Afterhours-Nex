@@ -36,6 +36,7 @@ val ffmpegPlatform: String = run {
 dependencies {
     implementation(project(":shared"))
     implementation(libs.zxing.core)
+    implementation(libs.serialization.json)       // the phone server and the yt-dlp bridge read and write JSON
     implementation("io.github.givimad:whisper-jni:${libs.versions.whisperJni.get()}")
     implementation("ws.schild:jave-nativebin-$ffmpegPlatform:${libs.versions.jave.get()}")
     implementation(compose.desktop.currentOs)
@@ -48,10 +49,15 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "app.afterhours.desktop.MainKt"
+        // Keep it light: a capped heap that's handed back to the system when the app is idle.
+        // The serial collector and the first-tier compiler only: far less memory of their own, and free heap goes back to the system.
+        jvmArgs += listOf("-Xms32m", "-Xmx512m", "-XX:+UseSerialGC", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=20",
+            "-XX:TieredStopAtLevel=1", "-XX:ReservedCodeCacheSize=64m", "-Xss512k",
+            "-Dskiko.gpu.resourceCacheLimit=67108864")             // Skia's graphics cache: 64 MB instead of the default 256 MB
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "AfterhoursNex"
-            packageVersion = "1.1.0"
+            packageVersion = "1.2.0"
             description = "A small, private podcast player"
             vendor = "AfterhoursNex"
             copyright = "© 2026 AfterhoursNex"

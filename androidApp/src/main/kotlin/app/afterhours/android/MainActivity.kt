@@ -1,5 +1,11 @@
 package app.afterhours.android
 
+import app.afterhours.core.CaptionEngine
+import app.afterhours.core.Video
+import app.afterhours.core.Paired
+import app.afterhours.core.RemoteVideo
+import app.afterhours.core.RemoteCaptions
+import app.afterhours.core.LocalAudio
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -29,6 +35,7 @@ import java.util.TimeZone
 class MainActivity : ComponentActivity() {
     private val opener = registerForActivityResult(ActivityResultContracts.OpenDocument()) { AndroidPlatform.get(this).opened(it) }
     private val saver = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { AndroidPlatform.get(this).saved(it) }
+    private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { AndroidPlatform.get(this).pickedAudio(it) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +46,7 @@ class MainActivity : ComponentActivity() {
         val platform = AndroidPlatform.get(applicationContext)
         platform.launchOpen = { types -> opener.launch(types) }
         platform.launchSave = { name -> saver.launch(name) }
+        platform.launchAudio = { audioPicker.launch(arrayOf("audio/*")) }
         setContent {
             App(platform) { enabled, onBack -> BackHandler(enabled = enabled, onBack = onBack) }
         }
@@ -82,6 +90,36 @@ class AndroidPlatform private constructor(private val context: Context) : Platfo
             context.contentResolver.openInputStream(uri)?.use { PickedFile(name, it.readBytes()) }
         }
     }
+
+    // Audio files from this phone: kept readable after a restart, so they play again later
+    var launchAudio: (() -> Unit)? = null
+    private var audioRequest: CompletableDeferred<List<Uri>>? = null
+    fun pickedAudio(uris: List<Uri>) { audioRequest?.complete(uris); audioRequest = null }
+
+    override suspend fun saveImage(name: String, bytes: ByteArray): String? = withContext(Dispatchers.IO) {
+        runCatching { val f = java.io.File(java.io.File(context.filesDir, "covers").apply { mkdirs() }, name); f.writeBytes(bytes); Uri.fromFile(f).toString() }.getOrNull()
+    }
+
+    override suspend fun openAudio(): List<LocalAudio> {
+        val launch = launchAudio ?: return emptyList()
+        val request = CompletableDeferred<List<Uri>>()
+        withContext(Dispatchers.Main) { audioRequest = request; launch() }
+        val uris = request.await()
+        return withContext(Dispatchers.IO) {
+            uris.map { uri ->
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                val info = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) (c.getString(0) ?: "Audio") to c.getLong(1) else null
+                }
+                LocalAudio(uri.toString(), info?.first ?: uri.lastPathSegment ?: "Audio", info?.second ?: 0L)
+            }
+        }
+    }
+
+    // Auto captions and video podcasts, made on the computer this phone is paired with (Settings › Your computer)
+    private val remoteCaptions = RemoteCaptions()
+    override val captions: CaptionEngine? get() = if (Paired.ready) remoteCaptions else null
+    init { Video.bridge = RemoteVideo() }
 
     override suspend fun saveFile(name: String, bytes: ByteArray): Boolean {
         val launch = launchSave ?: return false

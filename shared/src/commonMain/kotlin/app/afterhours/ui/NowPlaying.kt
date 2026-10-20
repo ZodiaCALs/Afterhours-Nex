@@ -58,24 +58,29 @@ fun NowPlaying(app: AppState) {
     val show = app.library.show(e.sid)
     val cap by app.playback.captions.collectAsState()
     val lyrics = settings.captions && cap.cues.isNotEmpty()
-    val art = e.image.ifBlank { show?.image.orEmpty() }
-    val name = show?.title ?: e.title
+    val art = e.image.ifBlank { show?.art.orEmpty() }
+    val design = if (e.image.isBlank()) show?.coverStyle.orEmpty() else ""
+    val name = show?.name ?: e.title
     LookProvider(DarkLook) {
         BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF101014)).pointerInput(Unit) { detectTapGestures { } }) {
-            Artwork(art, name, Modifier.fillMaxSize().scale(1.35f).blur(70.dp), corner = 0.dp, shadow = false)
+            if (settings.lessEffects) Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color.hsl(hueOf(name), 0.45f, 0.28f), Color(0xFF101014)))))
+            else Artwork(art, name, Modifier.fillMaxSize().scale(1.35f).blur(70.dp), corner = 0.dp, shadow = false, small = true)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.32f), Color.Black.copy(alpha = 0.58f)))))
             val wide = maxWidth >= 900.dp
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                Box(Modifier.fillMaxWidth().padding(top = app.platform.chromeTop)) {
+                app.platform.DragArea(Modifier.matchParentSize())
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     RoundButton(WebIcons.Chevdown, tr("Close Now Playing"), { app.nowPlaying = false }, size = 34.dp, bg = Color.White.copy(alpha = 0.16f), tint = Color.White)
                     Text(tr("Now Playing"), style = Type.pill, color = Color.White.copy(alpha = 0.85f), textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                     RoundButton(WebIcons.Cc, tr("Captions"), { app.library.updateSettings { it.copy(captions = !it.captions) } }, size = 34.dp,
                         bg = if (settings.captions) Color.White else Color.White.copy(alpha = 0.16f), tint = if (settings.captions) Color(0xFF18181A) else Color.White)
                 }
+                }
                 if (wide) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
                         Column(Modifier.width(380.dp).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
-                            Artwork(art, name, Modifier.fillMaxWidth().aspectRatio(1f), corner = 14.dp)
+                            Artwork(art, name, Modifier.fillMaxWidth().aspectRatio(1f), corner = 14.dp, style = design)
                             Spacer(Modifier.height(24.dp))
                             Controls(app, e, show)
                         }
@@ -89,7 +94,7 @@ fun NowPlaying(app: AppState) {
                     }
                 } else {
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-                        Artwork(art, name, Modifier.padding(vertical = 12.dp).widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f).align(Alignment.CenterHorizontally), corner = 14.dp)
+                        Artwork(art, name, Modifier.padding(vertical = 12.dp).widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f).align(Alignment.CenterHorizontally), corner = 14.dp, style = design)
                         Controls(app, e, show)
                         if (lyrics) Lyrics(app, cap.cues, Modifier.fillMaxWidth().height(300.dp).padding(top = 8.dp), compact = true)
                         Notes(app, e, st.error)
@@ -104,7 +109,7 @@ fun NowPlaying(app: AppState) {
 private fun Controls(app: AppState, e: Episode, show: Show?) {
     val st by app.playback.state.collectAsState()
     Text(e.title, style = Type.sectionTitle, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    Text(show?.title.orEmpty(), style = Type.body, color = Color.White.copy(alpha = 0.7f), maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+    Text(show?.name.orEmpty(), style = Type.body, color = Color.White.copy(alpha = 0.7f), maxLines = 1, modifier = Modifier.padding(top = 4.dp))
     Scrubber(st.positionMs, st.durationMs, { app.playback.seek(it) }, Color.White.copy(alpha = 0.25f), Color.White, Color.White.copy(alpha = 0.6f),
         Modifier.fillMaxWidth().padding(top = 18.dp))
     Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
@@ -150,6 +155,13 @@ fun IconBox(description: String, onClick: () -> Unit, content: @Composable () ->
 /** A thin scrubber: tap or drag to move through the episode. With [inline], the times sit at its ends. */
 @Composable
 fun Scrubber(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, track: Color, fill: Color, times: Color, modifier: Modifier, inline: Boolean = false) {
+    if (durationMs <= 0 && positionMs > 2000) {          // a live stream: no end to scrub to
+        Row(modifier, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFFF453A)))
+            Text(tr("LIVE"), style = Type.meta.copy(fontSize = 11.sp, letterSpacing = 1.sp), color = times, modifier = Modifier.padding(start = 6.dp))
+        }
+        return
+    }
     var drag by remember { mutableStateOf<Float?>(null) }
     val length = durationMs.coerceAtLeast(1L)
     val frac = drag ?: (positionMs.toFloat() / length).coerceIn(0f, 1f)
@@ -195,19 +207,10 @@ fun SpeedButton(app: AppState, speed: Float, color: Color) {
         Text(speedLabel(speed), style = Type.pill, color = color,
             modifier = Modifier.pressable(ia, 0.94f).clip(RoundedCornerShape(8.dp)).hoverFill(ia, RoundedCornerShape(8.dp), color.copy(alpha = 0.12f))
                 .clickable(ia, null) { open = true }.semantics { contentDescription = tr("Playback speed") }.padding(horizontal = 10.dp, vertical = 8.dp))
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text(tr("Playback speed"), style = Type.meta, color = look.text2, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 4.dp))
+        GlassMenu(open, { open = false }, width = 200.dp) {
+            MenuLabel(tr("Playback speed"))
             SPEED_CHOICES.forEach { s ->
-                val on = abs(s - speed) < 0.01f
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(speedLabel(s), style = Type.body.copy(fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal), color = if (on) look.accent else look.text)
-                            if (s == 1f) Text(tr("Normal"), style = Type.cardSub, color = look.text2, modifier = Modifier.padding(start = 8.dp))
-                        }
-                    },
-                    trailingIcon = { if (on) Icon(WebIcons.Check, contentDescription = null, tint = look.accent, modifier = Modifier.size(18.dp)) },
-                    onClick = { app.playback.speed(s); open = false })
+                MenuItem(speedLabel(s), { app.playback.speed(s); open = false }, checked = abs(s - speed) < 0.01f, note = if (s == 1f) tr("Normal") else null)
             }
         }
     }
@@ -230,10 +233,11 @@ fun SleepButton(app: AppState, color: Color) {
             }
             if (label.isNotEmpty()) Text(label, style = Type.pill, color = color)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text(tr("Off")) }, onClick = { app.playback.sleepAfter(null); open = false })
-            listOf(15, 30, 45, 60).forEach { m -> DropdownMenuItem(text = { Text(tr("$m minutes")) }, onClick = { app.playback.sleepAfter(m); open = false }) }
-            DropdownMenuItem(text = { Text(tr("End of this episode")) }, onClick = { app.playback.sleepAtEnd(); open = false })
+        GlassMenu(open, { open = false }, width = 220.dp) {
+            MenuLabel(tr("Sleep timer"))
+            MenuItem(tr("Off"), { app.playback.sleepAfter(null); open = false }, checked = sleep == null)
+            listOf(15, 30, 45, 60).forEach { m -> MenuItem(tr("$m minutes"), { app.playback.sleepAfter(m); open = false }, checked = (sleep as? Sleep.Minutes)?.minutes == m) }
+            MenuItem(tr("End of this episode"), { app.playback.sleepAtEnd(); open = false }, checked = sleep is Sleep.EndOfEpisode)
         }
     }
 }

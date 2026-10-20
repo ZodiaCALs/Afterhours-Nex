@@ -155,10 +155,14 @@ class Library(private val storage: Storage, private val scope: CoroutineScope) {
     /** Fetches a show's episodes. Returns an error message, or null when it worked. */
     suspend fun refreshNow(sid: String): String? {
         val show = show(sid) ?: return null
+        if (show.source == "local") return null           // files on this device: nothing to fetch
         if (show.status != "ready" || sid in _loading.value) return null
         _loading.update { it + sid }
         try {
-            if (show.source == "web") {
+            if (show.source == "video") {
+                val bridge = Video.bridge?.takeIf { it.available } ?: throw FetchException("Video channels need yt-dlp on this computer.")
+                setEpisodes(sid, bridge.feed(show.feedUrl, sid).episodes)
+            } else if (show.source == "web") {
                 val c = Crawler.crawl(show.pageUrl, show.title, sid)
                 if (c.source == "rss") { replace(show.copy(source = "rss", feedUrl = c.feedUrl)); readFeed(sid) } else setEpisodes(sid, c.episodes)
             } else {
@@ -203,7 +207,8 @@ class Library(private val storage: Storage, private val scope: CoroutineScope) {
         saveShows()
     }
 
-    private fun setEpisodes(sid: String, list: List<Episode>) {
+    private fun setEpisodes(sid: String, all: List<Episode>) {
+        val list = all.map { if (it.desc.length > 1000) it.copy(desc = it.desc.take(1000) + "…") else it }   // long show notes cost memory
         _episodes.update { it + (sid to list) }
         saveEpisodes(sid)
     }
@@ -221,7 +226,36 @@ class Library(private val storage: Storage, private val scope: CoroutineScope) {
     }
 
     /** Adds a show from a feed, an Apple Podcasts link or the show's website. */
+    /** Audio files from this device (MP3, Ogg, FLAC and the rest), kept together as one show. */
+    fun addLocal(files: List<LocalAudio>): Show {
+        val sid = "local"
+        val show = show(sid) ?: Show(sid = sid, title = "On this device", source = "local", description = "Audio files you’ve imported.", addedAt = Clock.now())
+            .also { s -> _shows.update { it + s }; saveShows() }
+        val have = _episodes.value[sid].orEmpty()
+        val now = Clock.now()
+        val fresh = files.filter { f -> have.none { it.url == f.uri } }.mapIndexed { i, f ->
+            Episode(id = stableId("l-", f.uri), sid = sid, title = f.name.substringBeforeLast('.'), url = f.uri, date = now - i)
+        }
+        setEpisodes(sid, fresh + have)
+        return show
+    }
+
+    /** A YouTube or Bilibili channel or playlist, as a show of its videos. */
+    private suspend fun addVideo(url: String): Show {
+        val sid = stableId("v-", url)
+        _shows.value.firstOrNull { it.sid == sid }?.let { return it }
+        val info = Video.bridge!!.feed(url, sid)
+        if (info.episodes.isEmpty()) throw FetchException("No videos found at that link.")
+        val s = Show(sid = sid, title = info.title.ifBlank { hostOf(url) }, author = info.author, image = info.image, source = "video", feedUrl = url,
+            description = info.description, link = url, addedAt = Clock.now())
+        _shows.update { it + s }
+        saveShows()
+        setEpisodes(sid, info.episodes)
+        return s
+    }
+
     suspend fun addByLink(url: String): Show {
+        if (Video.handles(url)) return addVideo(url)
         Regex("podcasts\\.apple\\.com/.*?/id(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()?.let { id ->
             val a = Apple.lookup(id) ?: throw FetchException("Apple doesn’t list a public feed for that show.")
             return addFromApple(a)
@@ -270,8 +304,42 @@ class Library(private val storage: Storage, private val scope: CoroutineScope) {
         }
     }
 
+    // ---- the listener's own arrangement: names, pins, groups and order ----
+    fun rename(sid: String, name: String) = arrange(sid) { it.copy(alias = name.trim().takeIf { n -> n != it.title }.orEmpty()) }
+    fun setPinned(sid: String, pinned: Boolean) = arrange(sid) { it.copy(pinned = pinned) }
+    fun setGroup(sid: String, group: String) = arrange(sid) { it.copy(group = group.trim()) }
+
+    /** Puts the shows in this order (any not listed keep their place at the end). */
+    fun reorder(sids: List<String>) {
+        _shows.update { list -> val bySid = list.associateBy { it.sid }; sids.mapNotNull { bySid[it] } + list.filter { it.sid !in sids } }
+        saveShows()
+    }
+
+    private fun arrange(sid: String, change: (Show) -> Show) {
+        _shows.update { list -> list.map { if (it.sid == sid) change(it) else it } }
+        saveShows()
+    }
+
+    fun setCover(sid: String, uri: String) = arrange(sid) { it.copy(cover = uri, coverStyle = "") }
+    fun setCoverStyle(sid: String, style: String) = arrange(sid) { it.copy(coverStyle = style, cover = "") }
+    fun resetCover(sid: String) = arrange(sid) { it.copy(cover = "", coverStyle = "") }
+
+    private var lastRemoved: Triple<Show, List<Episode>, Int>? = null
+
+    /** Puts back the show removed last, in its place, with its episodes. */
+    fun undoRemove(): Show? {
+        val (show, eps, index) = lastRemoved ?: return null
+        lastRemoved = null
+        _shows.update { list -> if (list.any { it.sid == show.sid }) list else list.toMutableList().apply { add(index.coerceIn(0, size), show) } }
+        saveShows()
+        if (eps.isNotEmpty()) setEpisodes(show.sid, eps)
+        show.preset?.let { removed = removed - it; storage.write("removed.json", json.encodeToString(stringList, removed.toList())) }
+        return show
+    }
+
     fun remove(sid: String) {
         val show = show(sid) ?: return
+        lastRemoved = Triple(show, _episodes.value[sid].orEmpty(), _shows.value.indexOfFirst { it.sid == sid })
         _shows.update { list -> list.filterNot { it.sid == sid } }
         _episodes.update { it - sid }
         saveShows()
@@ -313,6 +381,7 @@ class Library(private val storage: Storage, private val scope: CoroutineScope) {
 
     // ---- progress and settings ----
     fun setProgress(id: String, seconds: Long, length: Long, done: Boolean = false) {
+        if (id.startsWith("radio:")) return          // a live station has no position to come back to
         _progress.update { it + (id to Progress(seconds, length, Clock.now(), done)) }
         saveProgress()
     }
