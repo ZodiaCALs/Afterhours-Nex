@@ -50,6 +50,11 @@ data class Settings(
     val pro: Boolean = false,            // use the detailed options below
     val asr: AsrOptions = AsrOptions(),
     val language: String = "system",    // "system", "en", "zh-Hans" or "ja"
+    val translate: Boolean = false,     // show each caption line translated too
+    val translateTo: String = "auto",   // "auto" (the interface language) or a language code
+    val translator: String = "mymemory", // or "libre" (your own LibreTranslate server)
+    val libreUrl: String = "",
+    val libreKey: String = "",
 )
 
 data class FeedInfo(
@@ -65,7 +70,7 @@ class FetchException(message: String) : Exception(message)
 
 object AppInfo {
     const val NAME = "AfterhoursNex"
-    const val VERSION = "1.0.0"
+    const val VERSION = "1.1.0"
     const val SLOGAN = "How many times do I have left to see you again in my life?"
 }
 

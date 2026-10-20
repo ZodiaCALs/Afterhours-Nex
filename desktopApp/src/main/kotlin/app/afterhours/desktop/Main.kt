@@ -8,6 +8,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import app.afterhours.core.AppInfo
+import app.afterhours.core.CacheItem
 import app.afterhours.core.CaptionEngine
 import app.afterhours.core.Storage
 import app.afterhours.PhoneServer
@@ -62,6 +63,25 @@ class DesktopPlatform : Platform {
     override fun decode(bytes: ByteArray, charset: String): String? = try { String(bytes, Charset.forName(charset)) } catch (e: Exception) { null }
     fun close() { phoneServer.close(); audio.close() }
 
+    override fun cacheItems(): List<CacheItem> = listOf(
+        folder("converted", "Converted audio", File(dir, "converted"), "Opus, Ogg and FLAC episodes, converted so they can play here.", everyday = true),
+        folder("models", "Speech models", File(dir, "models"), "Used for auto captions; downloaded again when needed.", everyday = false),
+    )
+
+    override fun clearCache(id: String): Boolean = when (id) {
+        "converted" -> empty(File(dir, "converted"))
+        "models" -> empty(File(dir, "models"))
+        else -> false
+    }
+
+    private fun folder(id: String, label: String, f: File, note: String, everyday: Boolean): CacheItem {
+        val files = f.walkTopDown().filter { it.isFile }.toList()
+        return CacheItem(id, label, files.sumOf { it.length() }, files.size, note, everyday)
+    }
+
+    /** Deletes what's in a folder; anything in use stays, and is cleaned next time. */
+    private fun empty(f: File): Boolean = f.listFiles()?.map { it.deleteRecursively() }?.all { it } ?: true
+
     override suspend fun openFile(extensions: List<String>): PickedFile? = withContext(Dispatchers.Swing) {
         val dialog = FileDialog(null as Frame?, "Choose a file", FileDialog.LOAD)
         dialog.setFilenameFilter { _, n -> extensions.any { n.lowercase().endsWith(".$it") } }
@@ -104,4 +124,5 @@ class FileStorage(private val dir: File) : Storage {
     }
     override fun delete(name: String) { file(name).delete() }
     override fun list(prefix: String): List<String> = dir.listFiles()?.map { it.name }?.filter { it.startsWith(prefix) && !it.endsWith(".tmp") } ?: emptyList()
+    override fun bytes(name: String): Long = file(name).length()
 }

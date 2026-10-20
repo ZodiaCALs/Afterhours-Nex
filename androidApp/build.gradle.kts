@@ -13,8 +13,8 @@ android {
         applicationId = "app.afterhoursnex"
         minSdk = 26
         targetSdk = 36   // the level Google Play requires; Android 17 (API 37) behaviour hasn't been tested yet
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     // A release key from the environment (see the README). Without one, release builds use the debug key,

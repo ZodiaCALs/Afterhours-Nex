@@ -21,6 +21,8 @@ interface Storage {
     fun write(name: String, text: String)
     fun delete(name: String)
     fun list(prefix: String): List<String> = emptyList()
+    /** How much space a stored file takes. */
+    fun bytes(name: String): Long = read(name)?.encodeToByteArray()?.size?.toLong() ?: 0L
 }
 
 data class SetupState(val total: Int = 0, val done: Int = 0, val running: Boolean = false, val note: String = "")
@@ -280,6 +282,13 @@ class Library(private val storage: Storage, private val scope: CoroutineScope) {
     // ---- captions and OPML ----
     fun loadCues(id: String): List<Cue>? = read("cap-$id.json") { json.decodeFromString(cueList, it) }?.takeIf { it.isNotEmpty() }
     fun saveCues(id: String, cues: List<Cue>) = storage.write("cap-$id.json", json.encodeToString(cueList, cues))
+    /** Deletes the cached episode lists; each show downloads its list again the next time it's refreshed. */
+    fun clearEpisodeCache(): Int {
+        val names = storage.list("eps-")
+        names.forEach { storage.delete(it) }
+        return names.size
+    }
+
     fun clearSavedCaptions(): Int {
         val names = storage.list("cap-")
         names.forEach { storage.delete(it) }

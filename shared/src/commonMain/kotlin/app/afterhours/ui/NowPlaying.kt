@@ -1,7 +1,16 @@
 package app.afterhours.ui
 
+import kotlin.math.abs
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -9,91 +18,222 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.afterhours.core.*
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
-private val SPEEDS = listOf(0.8f, 1f, 1.2f, 1.5f, 1.8f, 2f)
+/** The speeds to choose from, in the speed menu and in Settings. */
+val SPEED_CHOICES = listOf(0.5f, 0.75f, 0.9f, 1f, 1.1f, 1.2f, 1.25f, 1.3f, 1.5f, 1.75f, 2f, 2.5f, 3f)
 
+/** "1.25×", "2×". */
+fun speedLabel(s: Float): String {
+    val r = (s * 100).roundToInt() / 100.0
+    return (if (r % 1.0 == 0.0) "${r.toInt()}" else r.toString().trimEnd('0').trimEnd('.')) + "×"
+}
+
+/** Now Playing, as in the web app: the cover blurred behind everything, the cover and controls, and the episode's notes. */
 @Composable
 fun NowPlaying(app: AppState) {
     val ep by app.playback.current.collectAsState()
     val st by app.playback.state.collectAsState()
-    val sleep by app.playback.sleep.collectAsState()
+    val settings by app.library.settings.collectAsState()
     val e = ep
     if (e == null) {
         LaunchedEffect(Unit) { app.nowPlaying = false }
         return
     }
     val show = app.library.show(e.sid)
-    var dragging by remember { mutableStateOf<Float?>(null) }
-    var sleepMenu by remember { mutableStateOf(false) }
+    val cap by app.playback.captions.collectAsState()
+    val lyrics = settings.captions && cap.cues.isNotEmpty()
+    val art = e.image.ifBlank { show?.image.orEmpty() }
+    val name = show?.title ?: e.title
+    LookProvider(DarkLook) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF101014)).pointerInput(Unit) { detectTapGestures { } }) {
+            Artwork(art, name, Modifier.fillMaxSize().scale(1.35f).blur(70.dp), corner = 0.dp, shadow = false)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.32f), Color.Black.copy(alpha = 0.58f)))))
+            val wide = maxWidth >= 900.dp
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RoundButton(WebIcons.Chevdown, tr("Close Now Playing"), { app.nowPlaying = false }, size = 34.dp, bg = Color.White.copy(alpha = 0.16f), tint = Color.White)
+                    Text(tr("Now Playing"), style = Type.pill, color = Color.White.copy(alpha = 0.85f), textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                    RoundButton(WebIcons.Cc, tr("Captions"), { app.library.updateSettings { it.copy(captions = !it.captions) } }, size = 34.dp,
+                        bg = if (settings.captions) Color.White else Color.White.copy(alpha = 0.16f), tint = if (settings.captions) Color(0xFF18181A) else Color.White)
+                }
+                if (wide) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
+                        Column(Modifier.width(380.dp).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
+                            Artwork(art, name, Modifier.fillMaxWidth().aspectRatio(1f), corner = 14.dp)
+                            Spacer(Modifier.height(24.dp))
+                            Controls(app, e, show)
+                        }
+                        if (lyrics) Column(Modifier.weight(1f).fillMaxHeight()) {
+                            Lyrics(app, cap.cues, Modifier.weight(1f).fillMaxWidth())
+                            CaptionBlock(app)
+                            Spacer(Modifier.height(12.dp))
+                        } else Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
+                            Notes(app, e, st.error)
+                        }
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+                        Artwork(art, name, Modifier.padding(vertical = 12.dp).widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f).align(Alignment.CenterHorizontally), corner = 14.dp)
+                        Controls(app, e, show)
+                        if (lyrics) Lyrics(app, cap.cues, Modifier.fillMaxWidth().height(300.dp).padding(top = 8.dp), compact = true)
+                        Notes(app, e, st.error)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Controls(app: AppState, e: Episode, show: Show?) {
+    val st by app.playback.state.collectAsState()
+    Text(e.title, style = Type.sectionTitle, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Text(show?.title.orEmpty(), style = Type.body, color = Color.White.copy(alpha = 0.7f), maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+    Scrubber(st.positionMs, st.durationMs, { app.playback.seek(it) }, Color.White.copy(alpha = 0.25f), Color.White, Color.White.copy(alpha = 0.6f),
+        Modifier.fillMaxWidth().padding(top = 18.dp))
+    Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        IconBox(tr("Start of episode"), { app.playback.seek(0) }) { Icon(WebIcons.Prev, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp)) }
+        IconBox(tr("Back 15 seconds"), { app.playback.skip(-15) }) { SkipIcon(true, 15, Color.White, 30.dp) }
+        PlayCircle(st.playing, st.buffering, 64.dp, Color.White, Color(0xFF18181A)) { app.playback.toggle() }
+        IconBox(tr("Forward 30 seconds"), { app.playback.skip(30) }) { SkipIcon(false, 30, Color.White, 30.dp) }
+        IconBox(tr("Next episode"), { if (app.playback.nextEpisode() != null) app.playback.next() }) {
+            Icon(WebIcons.Next, contentDescription = null, tint = Color.White.copy(alpha = if (app.playback.nextEpisode() != null) 1f else 0.35f), modifier = Modifier.size(28.dp))
+        }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        SpeedButton(app, st.speed, Color.White)
+        SleepButton(app, Color.White.copy(alpha = 0.85f))
+    }
+}
+
+@Composable
+private fun Notes(app: AppState, e: Episode, error: String?) {
+    CaptionBlock(app)
+    error?.let { Text(tr(it), color = Color(0xFFFF8A8A), style = Type.cardSub, modifier = Modifier.padding(vertical = 8.dp)) }
+    if (e.desc.isNotBlank()) {
+        Text(tr("About this episode"), style = Type.meta, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
+        Text(e.desc, style = Type.pageSub, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(bottom = 32.dp))
+    }
+}
+
+/** A round play or pause button (black in the player bar, white in Now Playing). */
+@Composable
+fun PlayCircle(playing: Boolean, buffering: Boolean, size: Dp, bg: Color, fg: Color, onClick: () -> Unit) {
+    Box(Modifier.size(size).clip(CircleShape).background(bg).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        if (buffering && !playing) CircularProgressIndicator(Modifier.size(size * 0.42f), color = fg, strokeWidth = 2.dp)
+        else Icon(if (playing) WebIcons.Pause else WebIcons.Play, contentDescription = tr(if (playing) "Pause" else "Play"), tint = fg, modifier = Modifier.size(size * 0.56f))
+    }
+}
+
+/** A round, borderless button around any icon. */
+@Composable
+fun IconBox(description: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(Modifier.size(38.dp).clip(CircleShape).clickable(onClick = onClick).semantics { contentDescription = description }, contentAlignment = Alignment.Center) { content() }
+}
+
+/** A thin scrubber: tap or drag to move through the episode. With [inline], the times sit at its ends. */
+@Composable
+fun Scrubber(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, track: Color, fill: Color, times: Color, modifier: Modifier, inline: Boolean = false) {
+    var drag by remember { mutableStateOf<Float?>(null) }
+    val length = durationMs.coerceAtLeast(1L)
+    val frac = drag ?: (positionMs.toFloat() / length).coerceIn(0f, 1f)
+    val at = (frac * length).toLong()
+    val left = fmtClock(at / 1000)
+    val right = "-" + fmtClock(((durationMs - at).coerceAtLeast(0)) / 1000)
+    val line = @Composable { m: Modifier ->
+        Box(m.height(16.dp)
+            .pointerInput(durationMs) { detectTapGestures { o -> if (durationMs > 0) onSeek((o.x / size.width * durationMs).toLong()) } }
+            .pointerInput(durationMs) {
+                detectHorizontalDragGestures(onDragEnd = { drag?.let { if (durationMs > 0) onSeek((it * durationMs).toLong()) }; drag = null }, onDragCancel = { drag = null }) { change, _ ->
+                    drag = (change.position.x / size.width).coerceIn(0f, 1f)
+                }
+            }, contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.fillMaxWidth().height(if (inline) 3.dp else 4.dp).clip(CircleShape).background(track))
+            Box(Modifier.fillMaxWidth(frac).height(if (inline) 3.dp else 4.dp).clip(CircleShape).background(fill))
+        }
+    }
+    if (inline) {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            Text(left, style = Type.meta.copy(fontSize = 11.sp), color = times, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)
+            line(Modifier.weight(1f).padding(horizontal = 8.dp))
+            Text(right, style = Type.meta.copy(fontSize = 11.sp), color = times, modifier = Modifier.width(44.dp))
+        }
+    } else {
+        Column(modifier) {
+            line(Modifier.fillMaxWidth())
+            Row(Modifier.fillMaxWidth()) {
+                Text(left, style = Type.meta.copy(fontSize = 11.sp), color = times)
+                Spacer(Modifier.weight(1f))
+                Text(right, style = Type.meta.copy(fontSize = 11.sp), color = times)
+            }
+        }
+    }
+}
+
+/** The current speed; tap it for the list of speeds, with 1× marked as normal and a tick by the one in use. */
+@Composable
+fun SpeedButton(app: AppState, speed: Float, color: Color) {
+    var open by remember { mutableStateOf(false) }
+    val ia = remember { MutableInteractionSource() }
+    Box {
+        Text(speedLabel(speed), style = Type.pill, color = color,
+            modifier = Modifier.pressable(ia, 0.94f).clip(RoundedCornerShape(8.dp)).hoverFill(ia, RoundedCornerShape(8.dp), color.copy(alpha = 0.12f))
+                .clickable(ia, null) { open = true }.semantics { contentDescription = tr("Playback speed") }.padding(horizontal = 10.dp, vertical = 8.dp))
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(tr("Playback speed"), style = Type.meta, color = look.text2, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 4.dp))
+            SPEED_CHOICES.forEach { s ->
+                val on = abs(s - speed) < 0.01f
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(speedLabel(s), style = Type.body.copy(fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal), color = if (on) look.accent else look.text)
+                            if (s == 1f) Text(tr("Normal"), style = Type.cardSub, color = look.text2, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    },
+                    trailingIcon = { if (on) Icon(WebIcons.Check, contentDescription = null, tint = look.accent, modifier = Modifier.size(18.dp)) },
+                    onClick = { app.playback.speed(s); open = false })
+            }
+        }
+    }
+}
+
+/** The moon button and its menu: off, 15 to 60 minutes, or the end of the episode. */
+@Composable
+fun SleepButton(app: AppState, color: Color) {
+    val sleep by app.playback.sleep.collectAsState()
+    var open by remember { mutableStateOf(false) }
     var now by remember { mutableStateOf(Clock.now()) }
     LaunchedEffect(sleep) { while (sleep != null) { now = Clock.now(); delay(15_000) } }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { app.nowPlaying = false }) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = tr("Close Now Playing")) }
-                Text(tr("Now Playing"), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-                Spacer(Modifier.width(48.dp))
+    Box {
+        Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { open = true }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(WebIcons.Moon, contentDescription = tr("Sleep timer"), tint = if (sleep != null) look.accent else color, modifier = Modifier.size(18.dp))
+            val label = when (val s = sleep) {
+                null -> ""
+                is Sleep.EndOfEpisode -> tr(" End of episode")
+                is Sleep.Minutes -> tr(" ${((s.endsAt - now) / 60_000L).coerceAtLeast(1)} min left")
             }
-            Artwork(e.image.ifBlank { show?.image.orEmpty() }, show?.title ?: e.title,
-                Modifier.padding(vertical = 20.dp).widthIn(max = 380.dp).fillMaxWidth().aspectRatio(1f), corner = 18.dp)
-            Text(e.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Text(show?.title.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
-            val length = st.durationMs.coerceAtLeast(1L).toFloat()
-            val at = dragging ?: st.positionMs.toFloat().coerceAtMost(length)
-            Slider(value = at, onValueChange = { dragging = it }, onValueChangeFinished = { dragging?.let { app.playback.seek(it.toLong()) }; dragging = null },
-                valueRange = 0f..length, modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
-            Row(Modifier.fillMaxWidth()) {
-                Text(fmtClock(at.toLong() / 1000), style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.weight(1f))
-                Text(tr("-" + fmtClock(((st.durationMs - at.toLong()).coerceAtLeast(0)) / 1000)), style = MaterialTheme.typography.labelSmall)
-            }
-            Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                IconButton(onClick = { app.playback.skip(-15) }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Filled.FastRewind, contentDescription = tr("Back 15 seconds")); Text(tr("15"), style = MaterialTheme.typography.labelSmall) }
-                }
-                FilledIconButton(onClick = { app.playback.toggle() }, modifier = Modifier.size(72.dp)) {
-                    if (st.buffering && !st.playing) CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
-                    else Icon(if (st.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = tr(if (st.playing) "Pause" else "Play"), modifier = Modifier.size(40.dp))
-                }
-                IconButton(onClick = { app.playback.skip(30) }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Filled.FastForward, contentDescription = tr("Forward 30 seconds")); Text(tr("30"), style = MaterialTheme.typography.labelSmall) }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = {
-                    val i = SPEEDS.indexOfFirst { it >= st.speed - 0.01f }
-                    app.playback.speed(SPEEDS[(if (i < 0) 0 else i + 1) % SPEEDS.size])
-                }) { Icon(Icons.Filled.Speed, contentDescription = tr("Playback speed")); Text(tr(" ${(st.speed * 10).toInt() / 10.0}×")) }
-                Box {
-                    TextButton(onClick = { sleepMenu = true }) {
-                        Icon(Icons.Filled.Bedtime, contentDescription = null)
-                        Text(tr(when (val s = sleep) {
-                            null -> tr(" Sleep timer")
-                            is Sleep.EndOfEpisode -> tr(" End of episode")
-                            is Sleep.Minutes -> tr(" ${((s.endsAt - now) / 60_000L).coerceAtLeast(1)} min left")
-                        }))
-                    }
-                    DropdownMenu(expanded = sleepMenu, onDismissRequest = { sleepMenu = false }) {
-                        DropdownMenuItem(text = { Text(tr("Off")) }, onClick = { app.playback.sleepAfter(null); sleepMenu = false })
-                        listOf(15, 30, 45, 60).forEach { m -> DropdownMenuItem(text = { Text(tr("$m minutes")) }, onClick = { app.playback.sleepAfter(m); sleepMenu = false }) }
-                        DropdownMenuItem(text = { Text(tr("End of this episode")) }, onClick = { app.playback.sleepAtEnd(); sleepMenu = false })
-                    }
-                }
-                IconButton(enabled = app.playback.nextEpisode() != null, onClick = { app.playback.next() }) { Icon(Icons.Filled.SkipNext, contentDescription = tr("Next episode")) }
-            }
-            CaptionBlock(app, st.positionMs)
-            st.error?.let { Text(tr(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.padding(8.dp)) }
-            if (e.desc.isNotBlank()) {
-                Text(tr("About this episode"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 6.dp))
-                Text(e.desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp))
-            }
+            if (label.isNotEmpty()) Text(label, style = Type.pill, color = color)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text(tr("Off")) }, onClick = { app.playback.sleepAfter(null); open = false })
+            listOf(15, 30, 45, 60).forEach { m -> DropdownMenuItem(text = { Text(tr("$m minutes")) }, onClick = { app.playback.sleepAfter(m); open = false }) }
+            DropdownMenuItem(text = { Text(tr("End of this episode")) }, onClick = { app.playback.sleepAtEnd(); open = false })
         }
     }
 }

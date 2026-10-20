@@ -1,5 +1,33 @@
 package app.afterhours.ui
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -17,85 +45,123 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import app.afterhours.core.*
 import kotlinx.coroutines.launch
 
-/** The caption line in Now Playing, with the transcript and caption actions. */
+/** Caption status and actions in Now Playing: what's happening, and loading, making or stopping captions. */
 @Composable
-fun CaptionBlock(app: AppState, positionMs: Long) {
+fun CaptionBlock(app: AppState) {
     val cap by app.playback.captions.collectAsState()
-    val settings by app.library.settings.collectAsState()
     val scope = rememberCoroutineScope()
-    var transcript by remember { mutableStateOf(false) }
     val engine = app.platform.captions
-    Column(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        val i = Captions.at(cap.cues, positionMs)
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
         when {
-            settings.captions && i >= 0 -> {
-                val cue = cap.cues[i]
-                if (cue.speaker.isNotBlank()) Text(cue.speaker, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                Text(cue.text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-            }
             cap.working -> {
-                Text(tr(cap.status), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                if (cap.progress >= 0f) LinearProgressIndicator(progress = { cap.progress }, modifier = Modifier.width(240.dp).padding(top = 6.dp))
-                else LinearProgressIndicator(Modifier.width(240.dp).padding(top = 6.dp))
+                Text(tr(cap.status), style = Type.cardSub, color = Color.White.copy(alpha = 0.72f))
+                Box(Modifier.padding(top = 8.dp).widthIn(max = 320.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f))) {
+                    if (cap.progress >= 0f) Box(Modifier.fillMaxWidth(cap.progress.coerceIn(0f, 1f)).fillMaxHeight().background(Color.White))
+                }
             }
-            cap.error.isNotBlank() -> Text(tr(cap.error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-            cap.status.isNotBlank() -> Text(tr(cap.status), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            cap.error.isNotBlank() -> Text(tr(cap.error), style = Type.cardSub, color = Color(0xFFFF8A8A))
+            cap.status.isNotBlank() && cap.cues.isEmpty() -> Text(tr(cap.status), style = Type.cardSub, color = Color.White.copy(alpha = 0.6f))
         }
-        Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-            if (cap.cues.isNotEmpty()) TextButton(onClick = { transcript = true }) { Text(tr("Transcript")) }
-            TextButton(onClick = {
+        Row(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            GlassPill(tr("Load captions"), WebIcons.File) {
                 scope.launch {
                     val f = app.platform.openFile(listOf("vtt", "srt", "json")) ?: return@launch
                     app.say(tr(if (app.playback.useCaptionFile(f.name, f.bytes)) "Loaded captions from ${f.name}." else "That file has no timed captions I can read."))
                 }
-            }) { Text(tr("Load captions")) }
-            if (engine != null) {
-                when {
-                    cap.working && cap.source == "auto" -> TextButton(onClick = { app.playback.stopCaptions() }) { Text(tr("Stop")) }
-                    cap.cues.isEmpty() -> TextButton(onClick = { app.playback.autoCaption() }) { Text(tr("Caption this episode")) }
-                    cap.source == "auto" -> TextButton(onClick = { app.playback.autoCaption() }) { Text(tr("Redo captions")) }
-                }
+            }
+            if (engine != null) when {
+                cap.working && cap.source == "auto" -> GlassPill(tr("Stop"), Icons.Filled.Stop) { app.playback.stopCaptions() }
+                cap.cues.isEmpty() -> GlassPill(tr("Caption this episode"), WebIcons.Wave) { app.playback.autoCaption() }
+                cap.source == "auto" -> GlassPill(tr("Redo captions"), WebIcons.Refresh) { app.playback.autoCaption() }
             }
         }
         if (cap.source.isNotBlank() && cap.cues.isNotEmpty()) {
-            Text(tr(when (cap.source) { "feed" -> tr("Captions from the show’s transcript"); "file" -> tr("Captions from your file"); else -> tr("Auto captions, made on this computer") }),
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(when (cap.source) { "feed" -> "Captions from the show’s transcript"; "file" -> "Captions from your file"; else -> "Auto captions, made on this computer" }),
+                style = Type.meta, color = Color.White.copy(alpha = 0.5f), modifier = Modifier.padding(top = 10.dp))
         }
     }
-    if (transcript) TranscriptDialog(app, cap.cues, positionMs) { transcript = false }
 }
 
 @Composable
-private fun TranscriptDialog(app: AppState, cues: List<Cue>, positionMs: Long, onClose: () -> Unit) {
+private fun GlassPill(text: String, icon: ImageVector?, onClick: () -> Unit) {
+    val ia = remember { MutableInteractionSource() }
+    Row(Modifier.pressable(ia).height(32.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).hoverFill(ia, CircleShape, Color.White.copy(alpha = 0.1f))
+        .clickable(ia, null, onClick = onClick).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (icon != null) { Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp)); Spacer(Modifier.width(6.dp)) }
+        Text(text, style = Type.pill, color = Color.White, maxLines = 1)
+    }
+}
+
+/**
+ * The captions as the web app rolls them: every line in a list whose edges fade out, the spoken one bright and
+ * full-size, the others dimmed and a touch smaller. The list glides each new line to a third of the way down;
+ * scroll it yourself and it waits until you've been still for a few seconds. Tap a line to go there.
+ */
+@Composable
+fun Lyrics(app: AppState, cues: List<Cue>, modifier: Modifier = Modifier, compact: Boolean = false) {
+    val state = app.playback.state.collectAsState()
+    val active by remember(cues) { derivedStateOf { Captions.at(cues, state.value.positionMs) } }
+    val settings by app.library.settings.collectAsState()
+    val version by app.translator.version.collectAsState()
+    val target = if (settings.translateTo == "auto") I18n.lang else settings.translateTo
+    LaunchedEffect(active.coerceAtLeast(0), settings.translate, target, cues) {
+        if (settings.translate) app.translateAhead(cues, active.coerceAtLeast(0), target, settings)
+    }
     val list = rememberLazyListState()
-    val current = Captions.at(cues, positionMs)
-    LaunchedEffect(current) { if (current >= 0) list.animateScrollToItem((current - 2).coerceAtLeast(0)) }
-    Dialog(onDismissRequest = onClose) {
-        Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 6.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
-            Column {
-                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("Transcript"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onClose) { Text(tr("Done")) }
-                }
-                LazyColumn(state = list, contentPadding = PaddingValues(12.dp)) {
-                    itemsIndexed(cues) { i, cue ->
-                        val on = i == current
-                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                            .background(if (on) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
-                            .clickable { app.playback.seek(cue.start) }.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                            Text(tr(fmtClock(cue.start / 1000) + if (cue.speaker.isNotBlank()) " · " + cue.speaker else ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            Text(cue.text, style = MaterialTheme.typography.bodyMedium, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
-                        }
-                    }
-                }
+    val dragged by list.interactionSource.collectIsDraggedAsState()
+    var wasDragged by remember { mutableStateOf(false) }
+    var heldUntil by remember { mutableStateOf(0L) }
+    LaunchedEffect(dragged) {
+        if (dragged) wasDragged = true else if (wasDragged) { heldUntil = Clock.now() + 3500; wasDragged = false }
+    }
+    BoxWithConstraints(modifier.fadingEdges(0.14f, if (compact) 0.7f else 0.78f)) {
+        val lead = maxHeight * (if (compact) 0.3f else 0.32f)
+        LaunchedEffect(active, cues) {
+            if (active < 0 || dragged || Clock.now() < heldUntil) return@LaunchedEffect
+            val info = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active }
+            // item offsets start below the top padding, so 0 puts the line exactly at the lead
+            if (info != null) list.animateScrollBy(info.offset.toFloat(), tween(680, easing = Motion.EaseOut)) else list.scrollToItem(active)
+        }
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = lead, bottom = maxHeight * (if (compact) 0.6f else 0.45f))) {
+            itemsIndexed(cues, key = { i, _ -> i }) { i, cue ->
+                val speaker = cue.speaker.isNotBlank() && cue.speaker != cues.getOrNull(i - 1)?.speaker
+                val translated = if (settings.translate && version >= 0) app.translator.get(cue.text.trim(), target)?.takeIf { it != cue.text.trim() } else null
+                LyricLine(cue, speaker, i == active, compact, translated) { app.playback.seek(cue.start) }
             }
         }
     }
 }
+
+@Composable
+private fun LyricLine(cue: Cue, speaker: Boolean, active: Boolean, compact: Boolean, translated: String?, onClick: () -> Unit) {
+    val ia = remember { MutableInteractionSource() }
+    val hovered by ia.collectIsHoveredAsState()
+    val color by animateColorAsState(when { active -> Color.White; hovered -> Color.White.copy(alpha = 0.58f); else -> Color.White.copy(alpha = 0.32f) },
+        tween(420, easing = Motion.EaseStd), label = "lyric")
+    val scale by animateFloatAsState(if (active) 1f else 0.975f, tween(520, easing = Motion.EaseOut), label = "lyric")
+    val second by animateColorAsState(if (active) Color.White.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.24f), tween(420, easing = Motion.EaseStd), label = "lyric")
+    Column(Modifier.fillMaxWidth().padding(bottom = if (compact) 18.dp else 22.dp).animateContentSize(tween(420, easing = Motion.EaseOut))
+        .graphicsLayer { scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0f, 0.5f) }
+        .hoverable(ia).clickable(ia, null, onClick = onClick)) {
+        if (speaker) Text(cue.speaker, style = Type.meta.copy(fontSize = 13.sp, letterSpacing = 0.02.em), color = Color.White.copy(alpha = 0.55f),
+            modifier = Modifier.padding(bottom = 4.dp))
+        Text(cue.text, color = color, modifier = Modifier.widthIn(max = 600.dp),
+            style = TextStyle(fontSize = if (compact) 22.sp else 30.sp, lineHeight = if (compact) 28.sp else 38.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.015).em))
+        if (translated != null) Text(translated, color = second, modifier = Modifier.padding(top = 6.dp).widthIn(max = 600.dp),
+            style = TextStyle(fontSize = if (compact) 16.sp else 19.sp, lineHeight = if (compact) 21.sp else 25.sp, fontWeight = FontWeight.SemiBold))
+    }
+}
+
+/** Fades the top and bottom of a scrolling list into the background, like the web's mask-image. */
+private fun Modifier.fadingEdges(top: Float, bottom: Float): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        drawRect(Brush.verticalGradient(0f to Color.Transparent, top to Color.Black, bottom to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+    }
 
 @Composable
 fun SwitchRow(title: String, sub: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
@@ -104,7 +170,7 @@ fun SwitchRow(title: String, sub: String?, checked: Boolean, onChange: (Boolean)
             Text(title)
             if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Toggle(checked = checked, onCheckedChange = onChange)
     }
 }
 

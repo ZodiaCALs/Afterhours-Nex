@@ -6,7 +6,7 @@
 
 AfterhoursNex is a small, private podcast player for Windows, macOS, Linux and Android. It's built from one Kotlin codebase with Kotlin Multiplatform and Compose Multiplatform, so it's a real app on each system. It draws its own interface, needs no browser, and plays in the background.
 
-**Version 1.0.0.** See [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
+**Version 1.1.0.** See [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
 
 ## Download
 
@@ -14,12 +14,12 @@ Get the file for your system from the project's GitHub Releases page.
 
 | System | File | To install |
 | --- | --- | --- |
-| Windows 10 or 11 | `AfterhoursNex-1.0.0.exe` or `.msi` | Run it. It installs just for you; no administrator rights needed. |
-| macOS 13 or later (Apple silicon) | `AfterhoursNex-1.0.0.dmg` | Open it and drag AfterhoursNex to Applications. |
-| Ubuntu, Debian and similar | `afterhoursnex_1.0.0-1_amd64.deb` | `sudo apt install ./afterhoursnex_1.0.0-1_amd64.deb` |
-| Fedora, openSUSE and similar | `afterhoursnex-1.0.0-1.x86_64.rpm` | `sudo dnf install ./afterhoursnex-1.0.0-1.x86_64.rpm` |
-| Windows or Linux, without installing | `AfterhoursNex-1.0.0-Windows-portable.zip` or `AfterhoursNex-1.0.0-Linux-portable.tar.gz` | Unpack it anywhere and run AfterhoursNex inside. |
-| Android 8 or later | `AfterhoursNex-1.0.0-Android.apk` | Open it on the phone and allow installing from that source. |
+| Windows 10 or 11 | `AfterhoursNex-1.1.0.exe` or `.msi` | Run it. It installs just for you; no administrator rights needed. |
+| macOS 13 or later (Apple silicon) | `AfterhoursNex-1.1.0.dmg` | Open it and drag AfterhoursNex to Applications. |
+| Ubuntu, Debian and similar | `afterhoursnex_1.1.0-1_amd64.deb` | `sudo apt install ./afterhoursnex_1.1.0-1_amd64.deb` |
+| Fedora, openSUSE and similar | `afterhoursnex-1.1.0-1.x86_64.rpm` | `sudo dnf install ./afterhoursnex-1.1.0-1.x86_64.rpm` |
+| Windows or Linux, without installing | `AfterhoursNex-1.1.0-Windows-portable.zip` or `AfterhoursNex-1.1.0-Linux-portable.tar.gz` | Unpack it anywhere and run AfterhoursNex inside. |
+| Android 8 or later | `AfterhoursNex-1.1.0-Android.apk` | Open it on the phone and allow installing from that source. |
 
 The desktop installers include their own Java runtime and FFmpeg, so there's nothing else to install. On Linux, JavaFX's audio playback also uses the system's FFmpeg libraries (`sudo apt install ffmpeg`).
 
@@ -46,7 +46,7 @@ The desktop installers include their own Java runtime and FFmpeg, so there's not
 - **In English, 简体中文 and 日本語.** Settings › Language follows the system by default. The interface, dates, durations and messages change language. Podcast titles and descriptions stay as their publishers wrote them.
 - **Use it on your phone from your computer.** With Settings › Use on your phone turned on, the desktop app gives a private link and a QR code. Opening it on a phone on the same Wi-Fi brings up the phone version of Afterhours, which can be added to the home screen. Feeds, search and websites go through the computer. The phone keeps its own shelf and progress, and auto captions aren’t available there yet.
 - **Background playback on Android,** with lock-screen, notification, headphone and car controls.
-- **Fits the screen:** a bottom bar on phones, and a side rail on tablets and desktop windows. Light and dark appearance.
+- **The Afterhours design.** The same look as the Afterhours web app: a sidebar with your shows on wide windows, a tab bar and floating mini player on phones, episode rows with play pills, a floating player bar, and Now Playing over the blurred cover. Light and dark appearance.
 - **An opening animation.** The sunset icon rises, the name is written letter by letter, and the x of "Nex" is drawn in two pen strokes before the slogan appears. A tap skips it, and Settings can turn it off.
 
 ## Building it
@@ -96,8 +96,8 @@ The **AfterhoursNex** workflow (`.github/workflows/kmp.yml`) runs on every chang
 Each run's files appear under its **Artifacts**. To publish a release with everything attached, push a version tag:
 
 ```
-git tag nex-v1.0.0
-git push origin nex-v1.0.0
+git tag nex-v1.1.0
+git push origin nex-v1.1.0
 ```
 
 The release uses this folder's `RELEASE_NOTES.md` as its description and includes `SHA256SUMS.txt`.
@@ -144,10 +144,33 @@ Unsigned installers work, but macOS and Windows warn people before opening them.
 - **Windows:** sign the installers with a code-signing certificate and Microsoft's `signtool`:
 
   ```
-  signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f certificate.pfx /p PASSWORD AfterhoursNex-1.0.0.exe
+  signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f certificate.pfx /p PASSWORD AfterhoursNex-1.1.0.exe
   ```
 
   Do the same for the `.msi`. Even signed, a new certificate shows SmartScreen warnings until it builds up a reputation.
+
+### Publishing on each platform
+
+The tag release on GitHub covers every platform at once. Beyond it, each platform has its own places to publish:
+
+- **macOS.**
+  - **Direct download:** sign the `.dmg` with a Developer ID certificate and notarise it (see "Signing the desktop apps" above), so it opens without a warning. This needs a membership of the Apple Developer Program.
+  - **Homebrew:** to offer `brew install --cask`, submit a cask to `homebrew/homebrew-cask` that points to the release's `.dmg`, with its SHA-256 from `SHA256SUMS.txt`.
+- **Windows.**
+  - **Direct download:** sign the `.exe` and `.msi` with a code-signing certificate (`signtool`, above). Signed installers stop showing SmartScreen warnings once they build a reputation, sooner with an EV certificate or Azure Trusted Signing.
+  - **winget:** run `wingetcreate new` with the release's `.msi` link, and submit the manifest it makes to `microsoft/winget-pkgs`.
+  - **Microsoft Store:** submit the signed `.msi` or `.exe` as a Win32 app in Partner Center.
+- **Linux.**
+  - **The release files:** publish the `.deb` (Debian, Ubuntu), `.rpm` (Fedora, openSUSE) and the portable `.tar.gz`.
+  - **Flathub:** listing the app there needs a Flatpak manifest, which isn't part of this project yet.
+- **Android.**
+  - **Direct download:** publish the release `.apk`, signed with your own key (see "Android" above). Readers allow installs from their browser or file manager.
+  - **Google Play:**
+    1. Create the app in Play Console and turn on Play App Signing.
+    2. Upload the `.aab` from `bundleRelease` to a testing track.
+    3. Fill in the store listing, data safety and content rating.
+    4. Promote the release to production. Check the Play Console for current testing requirements, because new personal accounts may need a closed test first.
+  - **Updates:** each update needs a higher `versionCode`.
 
 ### Changing the version
 
@@ -157,6 +180,27 @@ Update these three places together:
 - `packageVersion` in `desktopApp/build.gradle.kts`
 
 macOS requires the version to be three numbers with the first above 0, such as `1.0.1`.
+
+### Releasing a new version
+
+1. Change the version in the three places above, and write what's new at the top of `RELEASE_NOTES.md`.
+2. Test it on your own computer:
+   - `./gradlew :shared:desktopTest` runs the core's tests.
+   - `./gradlew :desktopApp:run` starts the app: play an episode, open Now Playing, try captions, speeds and the sleep timer, and switch languages and light or dark.
+   - `./gradlew :desktopApp:packageDistributionForCurrentOS` makes your system's installer: install it and open the installed app once.
+   - With an Android phone connected, `./gradlew :androidApp:installDebug` puts the app on it.
+3. Commit and push. The workflow builds every package; check that the run is green, and try the files under its **Artifacts**.
+4. Tag the release, and push the tag:
+   ```
+   git tag nex-v1.1.0
+   git push origin nex-v1.1.0
+   ```
+   When every build passes, the workflow publishes the GitHub release with all the files and `SHA256SUMS.txt`.
+5. If a build fails after tagging, fix it, then move the tag to the fix and push it again:
+   ```
+   git tag -d nex-v1.1.0 && git push --delete origin nex-v1.1.0
+   git tag nex-v1.1.0 && git push origin nex-v1.1.0
+   ```
 
 ## How it's put together
 

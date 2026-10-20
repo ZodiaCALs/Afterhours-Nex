@@ -51,7 +51,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "AfterhoursNex"
-            packageVersion = "1.0.0"
+            packageVersion = "1.1.0"
             description = "A small, private podcast player"
             vendor = "AfterhoursNex"
             copyright = "© 2026 AfterhoursNex"

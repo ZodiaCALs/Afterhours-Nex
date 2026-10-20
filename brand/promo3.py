@@ -2,6 +2,10 @@
 import json, random
 import promo as P                                   # device mock-ups and base styles
 import promo2 as P2                                 # letter geometry, the x's pen paths, stars
+# The app's screens in the film are screenshots of its design (shared with the Afterhours web app), from shots/capture.py.
+def shot(name, t, extra="", dark=False, overlay="", small=False):
+    return (f'<div class="phone{" small" if small else ""}" style="{P.a("pm-phone", 1.1, t)}{extra}"><div class="screen shot{" dk" if dark else ""}">'
+            f'<img src="shots/{name}.png">{P.status()}{overlay}</div></div>')
 BPM = 96; BEAT = 60 / BPM; BAR = 4 * BEAT
 def B(bar, beat=0.0): return (bar - 1) * BAR + beat * BEAT
 END = B(38)                                          # 92.5 s
@@ -110,7 +114,11 @@ open("title3.part.json", "w").write(json.dumps({"svg_len": len(title)}))
 print(f"title: x bold stroke {T['BOLD0']:.3f}–{T['BOLD1']:.3f} s, lift to {T['LIFT1']:.3f} s, fine stroke to {T['FINE1']:.3f} s; film {END} s")
 
 # ---- the scenes ----
-def scene(start, end, body, cls=""): return f'<section class="scene {cls}" style="{a("pm-scene", end - start + .3, start, "linear")}">{body}</section>'
+FL = "cubic-bezier(.1,.9,.2,1)"                       # the app's Fluent ease-out
+def scene(start, end, body, cls=""):
+    d = end - start + .3
+    return (f'<section class="scene {cls}" style="{a("pm-scene3", d, start, "linear")}">'
+            f'<div class="cam" style="animation:pm-cam {d:.2f}s linear {start:.2f}s both">{body}</div></section>')
 def up(t, dur=.9): return a("pm-up", dur, t)
 def listen_inner(t0):
     return (f'<div class="pt">Listen Now</div><div class="ps">Good evening. Here’s what’s new on your shelf.</div>'
@@ -135,7 +143,7 @@ def lock_inner(t0):
             f'<div class="mbar"><i style="--a:.42;--b:.5;{a("pm-progress", 5, t0 + .8, "linear")}"></i></div>'
             f'<div class="mc">{P.icon("prev", 30)}{P.icon("rew", 30)}<span class="mplay">{P.icon("pause", 34)}</span>{P.icon("fwd", 30)}{P.icon("next", 30)}</div></div></div>')
 def copy_top(kicker, title, t, cls="copy-top"):
-    return f'<div class="{cls}"><div class="kick" style="{up(t, .8)}">{kicker}</div><h2 style="{up(t + BEAT / 2)}">{title}</h2></div>'
+    return f'<div class="{cls}"><div class="kick" style="{up(t, .8)}">{kicker}</div><h2 style="{a("pm-titlein", 1.1, t + BEAT / 2, FL)}">{title}</h2></div>'
 def glass(icon_name, label, x, y, t):
     return (f'<div class="chipx" style="left:{x}px;top:{y}px;{a("pm-pop2", .7, t)}"><div class="chipf" style="animation:pm-float 5s ease-in-out {t:.2f}s infinite both">'
             f'{P.icon(icon_name, 26) if icon_name in P.I else ICONS2[icon_name]}<span>{label}</span></div></div>')
@@ -156,13 +164,15 @@ slogan = scene(B(5), B(9), f'''<div class="glow2" style="{a("pm-breathe", 10, B(
 tiles = "".join(f'<div class="wt" style="{a("pm-wave", 1.0, B(9) + .15 + (k % 10) * BEAT / 4 + (k // 10) * BEAT / 2)}">{P.art(k, 180, 20, 66)}</div>' for k in range(40))
 s1 = scene(B(9), B(13), f'''<div class="wall"><div class="wall-in" style="animation:pm-wall {B(13) - B(9) + .4:.2f}s linear {B(9):.2f}s both">{tiles}</div></div><div class="shade-l"></div>
   {P.copy("Your shelf", "Thirty shows,<br>ready on first launch", "Hand-picked shows find themselves in Apple’s podcast directory, or on their own websites when there’s no listing.", B(9, 1))}
-  <div class="tilt" style="animation:pm-tilt 1.5s {EASE} {B(9, 2):.2f}s both"><div class="pos-r">{P.phone(listen_inner(B(10)), B(9, 2))}</div></div>''')
+  <div class="tilt" style="animation:pm-tilt 1.5s {EASE} {B(9, 2):.2f}s both"><div class="pos-r"><div class="phone" style="{a("pm-phone", 1.1, B(9, 2))}"><div class="screen shot">
+    <img class="tall" src="shots/p_listen_tall.png" style="--to:-760px;animation:pm-scrolltall 3.2s {FL} {B(11):.2f}s both">
+    <img class="tabbar" src="shots/p_tabbar.png">{P.status()}</div></div></div></div>''')
 
 flying = "".join(f'''<div class="fly" style="left:{860 + k * 330}px;top:{330 + (k % 2) * 70}px;animation:pm-fly 1.2s {EASE} {B(13, .5 + k * .5):.2f}s both">
   <div class="flyc" style="animation:pm-float 6s ease-in-out {B(13, k):.2f}s infinite both">{P.art(k, 280, 24, 100)}<b>{tt}</b><span>{P.SHOWS[k][0]}</span>
   <div class="bar"><i style="--a:0;--b:{w};{a("pm-progress", 1.3, B(13, 1.2 + k * .5))}"></i></div><em>{left}</em></div></div>'''
     for k, (tt, w, left) in enumerate([("The locked-room problem", ".62", "17 min left"), ("Why the night sky is dark", ".35", "31 min left"), ("Rainy evenings in Tokyo", ".8", "6 min left")]))
-s2 = scene(B(13), B(15), f'<div class="pos-l2">{P.phone(listen_inner(B(13)), B(13) - .15)}</div>{flying}' + copy_top("Up Next", "Every episode keeps your place", B(13), "copy-tr"))
+s2 = scene(B(13), B(15), f'<div class="pos-l2"><div class="phone" style="{a("pm-phone", 1.1, B(13) - .15)}"><div class="screen shot"><img src="shots/p_listen_light.png"><img src="shots/p_listen_playing.png" style="animation:pm-fadein .4s {FL} {B(14):.2f}s both"><img class="band" src="shots/p_listen_playing.png" style="animation:pm-bandup .75s {FL} {B(14):.2f}s both">{P.status()}</div></div></div>{flying}' + copy_top("Up Next", "Every episode keeps your place", B(13), "copy-tr"))
 
 rowsA = [("City pop &amp; anime songs", [(3, "City Pop Diaries", "One album a week from 1980s Tokyo."), (6, "Pixel Archive", "Songs from the games you grew up with.")]),
          ("Late-night jazz", [(4, "Late Jazz Notes", "One ballad, a whole hour."), (1, "Slow Radio", "Long, quiet interviews.")])]
@@ -170,8 +180,8 @@ rowsB = [("Mystery novels", [(0, "Midnight Mysteries", "Golden-age crime, one bo
          ("Big ideas", [(2, "Small Hours Science", "The universe, explained after dark."), (7, "Slow Radio", "Conversations worth the time.")])]
 rowsC = [("Gadgets &amp; tech", [(5, "Gadget Night", "The week in tech, without the noise."), (6, "Pixel Archive", "Games and the people who made them.")]),
          ("Japanese picks", [(3, "City Pop Diaries", "シティポップの名盤を一枚ずつ。"), (1, "The Quiet Library", "本と夜の話。")])]
-fan = "".join(f'<div class="fan" style="animation:pm-fan{d} 1.3s {EASE} {B(15, .5):.2f}s both">{P.phone(discover_inner(rows, B(15) + .3), B(15) - .1 + k * .08)}</div>'
-              for k, (d, rows) in enumerate([("L", rowsA), ("R", rowsC), ("C", rowsB)]))
+fan = "".join(f'<div class="fan" style="animation:pm-fan{d} 1.3s {EASE} {B(15, .5):.2f}s both">{shot(rows, B(15) - .1 + k * .08)}</div>'
+              for k, (d, rows) in enumerate([("L", "p_library"), ("R", "p_show"), ("C", "p_discover")]))
 s3 = scene(B(15), B(17), fan + copy_top("Discover", "Find the next show to fall for", B(15)))
 
 results = [("City Pop Diaries", "Night Shift Radio"), ("Tokyo After Dark", "Kaze Studio"), ("Crate Digging Japan", "Low Light"), ("Plastic Love Hours", "Midnight FM")]
@@ -183,9 +193,14 @@ s4 = scene(B(17), B(19), f'''<div class="kick center" style="{up(B(17), .8)}">Se
   {P.tap(843, 900, B(18, 1.3))}
   <div class="foot" style="{up(B(18, 2))}">Or paste any feed, Apple Podcasts link or website.</div>''')
 
-orbit = "".join(glass(*c) for c in [("speed", "1.2× speed", 250, 300, B(19, 2)), ("rew", "Back 15", 330, 600, B(19, 3)), ("fwd", "Forward 30", 1300, 330, B(20, 0)),
+rows_sp = [("0.75×", ""), ("1×", "Normal"), ("1.25×", ""), ("1.5×", ""), ("2×", "")]
+speedcard = (f'<div class="speedcard" style="{a("pm-pop2", .8, B(19, 3))}"><div class="sc-h">Playback speed</div>'
+             f'<div class="sc-hl" style="animation:pm-scmove .6s {FL} {B(20, 2):.2f}s both"></div>'
+             + "".join(f'<div class="sc-r"><span>{v}</span><em>{n}</em></div>' for v, n in rows_sp)
+             + f'<i class="sc-ck" style="animation:pm-scmove .6s {FL} {B(20, 2):.2f}s both">✓</i></div>')
+orbit = "".join(glass(*c) for c in [("rew", "Back 15", 330, 600, B(19, 3)), ("fwd", "Forward 30", 1300, 330, B(20, 0)),
                                     ("moon", "Sleep · 30 min", 1290, 620, B(20, 2)), ("next", "Plays the next episode", 1200, 880, B(21, 0)), ("library", "Remembers your place", 190, 880, B(21, 1))])
-s5 = scene(B(19), B(22), f'<div class="backart" style="{a("pm-ken2", 8, B(19), "ease-in-out")}"></div><div class="pos-c">{P.phone(playing_inner(B(19)), B(19, .25))}</div>{orbit}'
+s5 = scene(B(19), B(22), f'<div class="backart" style="{a("pm-ken2", 8, B(19), "ease-in-out")}"></div><div class="pos-c"><div class="phone" style="{a("pm-phone", 1.1, B(19, .25))}"><div class="screen shot"><img src="shots/p_listen_playing.png"><img src="shots/p_np.png" style="animation:pm-nprise .62s {FL} {B(19, 1.5):.2f}s both">{P.status()}<div class="sbdark" style="animation:pm-fadein .4s {FL} {B(19, 1.5):.2f}s both">{P.status()}</div></div></div></div>{speedcard}{orbit}'
            + copy_top("Now Playing", "Pick up exactly where you left off", B(19), "copy-top hi"))
 
 kar_lines = ["The door was locked from the inside.", "The key was still in the lock,", "and the window had been painted shut for years.",
@@ -195,7 +210,7 @@ kar = "".join(f'<div class="kl" style="animation:pm-hl {step:.3f}s ease-out {B(2
 caps = "".join(f'<span style="animation:pm-capwin {step:.3f}s linear {B(22, .5) + k * step:.2f}s both">{l}</span>' for k, l in enumerate(kar_lines))
 s6 = scene(B(22), B(24), f'''<div class="kar"><div style="animation:pm-scrollk {B(24) - B(22):.2f}s {EASE} {B(22, .5):.2f}s both">{kar}</div></div>
   <div class="kick kar-k" style="{up(B(22), .8)}">Captions and transcripts</div>
-  <div class="pos-r2">{P.phone(playing_inner(B(22), f'<div class="capline">{caps}</div>'), B(22, .1))}</div>''')
+  <div class="pos-r2">{shot("p_np", B(22, .1), dark=True, overlay=f'<div class="capover">{caps}</div>')}</div>''')
 
 tlines = ["Welcome back to Late Jazz Notes.", "Tonight it’s one ballad, and a whole hour on it.", "Blue in Green, slowly, the way it was first played.",
           "Listen to how the piano leaves the space open…", "and how the trumpet walks into it."]
@@ -211,19 +226,17 @@ badges = "".join(glass(*c) for c in [("headphones", "Headphone controls", 300, 3
                                      ("car", "Car controls", 1330, 680, B(26, 3)), ("next", "Keeps going in the background", 220, 700, B(27, 0))])
 s8 = scene(B(26), B(28), f'<div class="pos-c">{P.phone(lock_inner(B(26)), B(26, .1), "")}</div>{badges}' + copy_top("Android", "Keeps playing with the screen off", B(26), "copy-top hi"))
 
-dark_phone = f'<div class="phone" style="{a("pm-phone", 1.1, B(28))}"><div class="screen">{P.status()}{listen_inner(B(28) + .2)}</div></div>'
-light_phone = f'<div class="phone" style="{a("pm-phone", 1.1, B(28))}"><div class="screen light">{P.status()}{listen_inner(B(28) + .2)}</div></div>'
+dark_phone = shot("p_listen_dark", B(28), dark=True)
+light_phone = shot("p_listen_light", B(28))
 s9 = scene(B(28), B(30), f'''<div class="pos-c">{dark_phone}</div><div class="pos-c wipe" style="animation:pm-wipe 1.6s {EASE} {B(28, 1.5):.2f}s both">{light_phone}</div>
   <div class="lbl" style="left:380px;{up(B(28, 2.5))}">Light</div><div class="lbl" style="left:1340px;{up(B(28, 3))}">Dark</div>''' + copy_top("Appearance", "Light or dark, as you like it", B(28), "copy-top hi"))
 
 grid = "".join(f'<div class="tile" style="{up(B(30) + .6 + k * .06, .8)}">{P.art(k, 132, 12)}<b>{P.SHOWS[k % 8][0]}</b></div>' for k in range(10))
-desk = f'''<div class="laptop" style="{a("pm-phone", 1.4, B(30, .2))}"><div class="lscreen"><div class="win"><div class="wbar"><i></i><i></i><i></i><span>AfterhoursNex</span></div>
-  <div class="wbody"><div class="rail">{"".join(f'<span class="{c}">{P.icon(k, 24)}</span>' for k, c in [("home", ""), ("explore", ""), ("library", "on"), ("search", ""), ("gear", "")])}</div>
-  <div class="wcontent"><div class="wt">Library</div><div class="wsub">30 shows</div><div class="grid">{grid}</div></div></div>
-  {P.mini("Blue in green, slowly", "Late Jazz Notes", 4)}</div></div><div class="lbase"></div></div>
-  <div class="phone small" style="{a("pm-phone", 1.3, B(30, .6))}"><div class="screen">{P.status()}<div class="pt">Listen Now</div><div class="ps">Good evening.</div><div class="sec">Up Next</div><div class="row">{P2.up_next(B(30) + 1.0)}</div>{P.navbar("home")}</div></div>'''
+desk = f'''<div class="laptop" style="{a("pm-phone", 1.4, B(30, .2))}"><div class="lscreen"><div class="win shotwin"><div class="wbar light"><i></i><i></i><i></i><span>AfterhoursNex</span></div>
+  <img src="shots/d_library.png"><img class="drill" src="shots/d_show.png" style="animation:pm-drill .6s {FL} {B(31):.2f}s both"></div></div><div class="lbase"></div></div>
+  {shot("p_listen_light", B(30, .6), small=True)}'''
 plats = "".join(f'<span style="animation:pm-lit .5s ease-out {B(30, k):.2f}s both">{n}</span>' for k, n in enumerate(["WINDOWS", "MACOS", "LINUX", "ANDROID"]))
-s10 = scene(B(30), B(32), f'<div class="center-copy"><h2 style="{up(B(30))}">One app. Four systems.</h2></div>{desk}<div class="plats">{plats}</div>', "s7")
+s10 = scene(B(30), B(32), f'<div class="center-copy"><h2 style="{a("pm-titlein", 1.1, B(30), FL)}">One app. Four systems.</h2></div>{desk}<div class="plats">{plats}</div>', "s7")
 
 bd = scene(B(32), B(34), f'''<div class="glow2" style="opacity:.7"></div><div class="bd">
   <div style="{a("pm-word", 1.4, B(32))}">How many times</div><div style="{a("pm-word", 1.4, B(32, 2))}">do I have left to see you</div><div style="{a("pm-word", 1.6, B(33))}">again in my life?</div></div>''')
@@ -243,6 +256,84 @@ finale = scene(B(34), END + 1, f'''<div class="fin" style="{a("pm-end", 2.0, B(3
   <div class="fslogan" style="{up(B(35), 1.6)}">How many times do I have left to see you again in my life?</div>
   <div class="ffree" style="{up(B(36), 1.4)}">Free · private · no account needed</div>
   <div class="fplat" style="{up(B(36, 2), 1.4)}">WINDOWS · MACOS · LINUX · ANDROID</div>''', "s8")
+
+
+# ---- the captions scene, rebuilt around the app's rolling captions ----
+LY = ["The door was locked from the inside.", "The key was still in the lock,", "and the window had been painted shut for years.",
+      "So how did the murderer leave the room?", "That’s the question every locked-room story asks,", "and tonight, we’re going to answer it."]
+LY_T0, LY_STEP, LY_PITCH, LY_ACTIVE = B(22, .5), 2 * BEAT, 92, 4
+LY_START, LY_LEN = B(22), B(24) - B(22) + .3
+def _pct(t): return max(0.0, min(100.0, (t - LY_START) / LY_LEN * 100))
+ly_css = "@keyframes ly-roll { 0% { transform: translateY(0); }"
+for k in range(1, LY_ACTIVE):
+    c = LY_T0 + k * LY_STEP
+    ly_css += f" {_pct(c):.3f}% {{ transform: translateY({-(k - 1) * LY_PITCH}px); animation-timing-function: {FL}; }} {_pct(c + .68):.3f}% {{ transform: translateY({-k * LY_PITCH}px); }}"
+ly_css += f" 100% {{ transform: translateY({-(LY_ACTIVE - 1) * LY_PITCH}px); }} }}\n"
+DIM, ON = "rgba(255,255,255,.32)", "#fff"
+for i in range(LY_ACTIVE):
+    on, off = LY_T0 + i * LY_STEP, LY_T0 + (i + 1) * LY_STEP
+    last = i == LY_ACTIVE - 1
+    ly_css += (f"@keyframes ly-{i} {{ 0% {{ color: {DIM}; transform: scale(.975); }} {_pct(on):.3f}% {{ color: {DIM}; transform: scale(.975); }}"
+               f" {_pct(on + .5):.3f}% {{ color: {ON}; transform: none; }}"
+               + ("" if last else f" {_pct(off):.3f}% {{ color: {ON}; transform: none; }} {_pct(off + .5):.3f}% {{ color: {DIM}; transform: scale(.975); }}")
+               + f" 100% {{ color: {ON if last else DIM}; transform: {'none' if last else 'scale(.975)'}; }} }}\n")
+lines_html = "".join(f'<div class="ly" style="{f"animation:ly-{i} {LY_LEN:.2f}s linear {LY_START:.2f}s both" if i < LY_ACTIVE else ""}">{l}</div>' for i, l in enumerate(LY))
+lyr_phone = f'''<div class="phone" style="{a("pm-phone", 1.1, B(22, .1))}"><div class="screen shot dk lyr">
+  <img class="lyr-bg" src="shots/p_np.png"><div class="lyr-dim"></div>
+  <div class="lyr-head">{P.art(0, 56, 10, 24)}<div><b>Listener questions</b><span>Shedunnit</span></div></div>
+  <div class="lyr-win"><div class="lyr-list" style="animation:ly-roll {LY_LEN:.2f}s linear {LY_START:.2f}s both">{lines_html}</div></div>
+  <div class="lyr-bar"><i style="--a:.31;--b:.36;{a("pm-progress", 5, B(22), "linear")}"></i></div>
+  <div class="lyr-ctl"><span>15</span><b></b><span>30</span></div>
+  <div class="sbdark">{P.status()}</div></div></div>'''
+s6 = scene(B(22), B(24), f'''<div class="pos-r2">{lyr_phone}</div>
+  {P.copy("Captions that roll", "Read along,<br>line by line", "The spoken line lights up and glides into place. Tap any line to jump there. Shows’ transcripts, your caption files, or captions made on your computer.", B(22, .25))}''')
+
+MOTION_CSS = """
+@keyframes pm-scene3 {
+  0% { opacity: 0; transform: translateY(26px) scale(.985); filter: blur(8px); animation-timing-function: cubic-bezier(.1,.9,.2,1); }
+  8% { opacity: 1; transform: none; filter: none; }
+  91% { opacity: 1; transform: none; filter: none; animation-timing-function: cubic-bezier(.9,.1,1,.2); }
+  100% { opacity: 0; transform: scale(1.025); filter: blur(10px); } }
+.cam { position: absolute; inset: 0; transform-origin: 50% 46%; }
+@keyframes pm-cam { from { transform: scale(1); } to { transform: scale(1.035); } }
+@keyframes pm-titlein { from { opacity: 0; transform: translateY(.5em); clip-path: inset(0 0 100% 0); } 55% { opacity: 1; } to { opacity: 1; transform: none; clip-path: inset(-10% -5% -25% -5%); } }
+@keyframes pm-fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pm-scrolltall { from { transform: none; } to { transform: translateY(var(--to)); } }
+@keyframes pm-bandup { from { opacity: 0; transform: translateY(54px); } to { opacity: 1; transform: none; } }
+@keyframes pm-nprise { from { opacity: 0; transform: translateY(40px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes pm-drill { from { opacity: 0; transform: scale(.965); } to { opacity: 1; transform: none; } }
+@keyframes pm-scmove { from { transform: none; } to { transform: translateY(46px); } }
+.screen.shot > img.tall { height: auto; bottom: auto; object-fit: fill; }
+.screen.shot > img.tabbar { top: auto; bottom: 0; height: auto; z-index: 2; }
+.screen.shot > img.band { clip-path: inset(83.5% 0 8.2% 0); z-index: 1; }
+.screen.shot > img[style*="pm-nprise"], .screen.shot > img[style*="pm-fadein"] { opacity: 0; }
+.sbdark { position: absolute; inset: 0 0 auto 0; z-index: 3; opacity: 0; } .lyr .sbdark { opacity: 1; }
+.sbdark .sb { position: absolute; left: 0; right: 0; top: 0; padding: 18px 34px 8px; color: #fff; } .sbdark .sb-r i { background: #fff; }
+.win.shotwin { position: relative; } .win.shotwin > img.drill { position: absolute; left: 0; top: 40px; clip-path: inset(0 0 0 17.3%); transform-origin: 58% 0; opacity: 0; }
+.speedcard { position: absolute; left: 236px; top: 236px; width: 250px; padding: 8px 0 10px; border-radius: 18px; background: rgba(30,22,52,.62);
+  border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(14px); box-shadow: 0 24px 60px rgba(0,0,0,.35); color: #F5EEF4; opacity: 0; }
+.sc-h { padding: 8px 20px 8px; font-size: 14px; font-weight: 600; color: rgba(255,255,255,.6); }
+.sc-r { position: relative; z-index: 1; display: flex; align-items: baseline; gap: 10px; height: 46px; line-height: 46px; padding: 0 20px; font-size: 21px; font-weight: 600; }
+.sc-r em { font-style: normal; font-size: 15px; font-weight: 500; color: rgba(255,255,255,.55); }
+.sc-hl { position: absolute; left: 8px; right: 8px; top: 92px; height: 46px; border-radius: 12px; background: rgba(255,110,159,.28); }
+.sc-ck { position: absolute; right: 22px; top: 92px; height: 46px; line-height: 46px; font-style: normal; font-size: 20px; font-weight: 700; color: #FF6E9F; z-index: 2; }
+.lyr .lyr-bg { position: absolute; inset: -10%; width: 120%; height: 120%; object-fit: cover; filter: blur(30px) saturate(1.25) brightness(.62); }
+.lyr .lyr-dim { position: absolute; inset: 0; background: linear-gradient(rgba(10,8,20,.25), rgba(10,8,20,.55)); }
+.lyr-head { position: absolute; left: 30px; right: 30px; top: 78px; display: flex; align-items: center; gap: 14px; color: #fff; z-index: 2; }
+.lyr-head b { display: block; font-size: 19px; } .lyr-head span { font-size: 15px; color: rgba(255,255,255,.65); }
+.lyr-win { position: absolute; left: 30px; right: 26px; top: 168px; height: 560px; overflow: hidden; z-index: 2;
+  -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 72%, transparent); }
+.lyr-list { padding-top: 120px; }
+.ly { height: 74px; margin-bottom: 18px; font-size: 25px; line-height: 1.24; font-weight: 700; letter-spacing: -.015em; color: rgba(255,255,255,.32);
+  transform-origin: 0 50%; transform: scale(.975); }
+.lyr-bar { position: absolute; left: 30px; right: 30px; bottom: 132px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.25); z-index: 2; }
+.lyr-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: #fff; }
+.lyr-ctl { position: absolute; left: 0; right: 0; bottom: 48px; display: flex; justify-content: center; align-items: center; gap: 54px; z-index: 2; }
+.lyr-ctl span { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; color: #fff; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.lyr-ctl b { width: 70px; height: 70px; border-radius: 50%; background: #fff; position: relative; }
+.lyr-ctl b::before, .lyr-ctl b::after { content: ""; position: absolute; top: 22px; width: 8px; height: 26px; border-radius: 3px; background: #18181A; }
+.lyr-ctl b::before { left: 24px; } .lyr-ctl b::after { right: 24px; }
+"""
 
 CSS3 = """
 .stars { animation: pm-drift 92.5s linear 0s both; }
@@ -302,9 +393,21 @@ CSS3 = """
 @keyframes pm-lit { from { color: #6E6290; text-shadow: none; } to { color: #FFF1DE; text-shadow: 0 0 26px rgba(254,187,95,.65); } }
 .s7 .laptop { top: 250px; } .s7 .phone.small { top: 290px; }
 .bd { position: absolute; left: 0; right: 0; top: 300px; text-align: center; font-family: NexSerif; font-style: italic; font-size: 96px; line-height: 1.25; color: #F5EEF4; } .bd div { opacity: 0; }
+.screen.shot { padding: 0; background: #FFFFFF; } .screen.shot.dk { background: #18181A; }
+.screen.shot > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.screen.shot .sb { position: absolute; left: 0; right: 0; top: 0; padding: 18px 34px 8px; z-index: 2; color: #1D1D1F; }
+.screen.shot .sb-r i { background: #1D1D1F; } .screen.shot.dk .sb { color: #F5F5F7; } .screen.shot.dk .sb-r i { background: #F5F5F7; }
+.capover { position: absolute; left: 30px; right: 30px; top: 568px; z-index: 3; display: grid; text-align: left; font-size: 19px; line-height: 1.35; font-weight: 600; color: #fff; }
+.capover span { grid-area: 1 / 1; opacity: 0; }
+.win.shotwin { background: #FFFFFF; } .win.shotwin > img { display: block; width: 100%; height: calc(100% - 40px); object-fit: cover; object-position: top left; }
+.wbar.light { background: #F2F2F5; color: #6E6E73; }
+.lap2 .win { background: #FFFFFF; color: #1D1D1F; } .lap2 .wbar { background: #F2F2F5; color: #6E6E73; }
+.lap2 .acap-l { border-right: 1px solid rgba(60,60,67,.12); } .lap2 .acap-l span { color: #C8326C; } .lap2 .arec { color: #6E6E73; }
+.lap2 .aw { color: #C8326C; } .lap2 .tl:last-child { background: rgba(200,50,108,.1); } .lap2 .aright { color: #1D1D1F; }
+.lap2 .bar { background: rgba(118,118,128,.18); } .lap2 .bar i { background: #C8326C; }
 .fadeout3 { position: absolute; inset: 0; background: #000; opacity: 0; animation: pm-fade 1s linear 91.5s both; }
 """
-page = f"""<!doctype html><html><head><meta charset="utf-8"><title>AfterhoursNex film</title><style>{P.CSS}{P2.CSS2}{CSS3}</style></head>
+page = f"""<!doctype html><html><head><meta charset="utf-8"><title>AfterhoursNex film</title><style>{P.CSS}{P2.CSS2}{CSS3}{MOTION_CSS}{ly_css}</style></head>
 <body><div class="bg"></div><div class="dusk"></div>{P2.starfield}{title}{slogan}{s1}{s2}{s3}{s4}{s5}{s6}{s7}{s8}{s9}{s10}{bd}{finale}<div class="fadein"></div><div class="fadeout3"></div>
 <script>{TITLE_JS}
 window.seek = t => {{

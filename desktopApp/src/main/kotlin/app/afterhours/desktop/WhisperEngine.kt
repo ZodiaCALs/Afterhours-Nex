@@ -84,7 +84,7 @@ class WhisperEngine(dataDir: File) : CaptionEngine {
         status(message, 0f)
         val client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
         val request = HttpRequest.newBuilder(URI("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$name.bin"))
-            .header("User-Agent", "AfterhoursNex/1.0.0").build()
+            .header("User-Agent", "AfterhoursNex/${app.afterhours.core.AppInfo.VERSION}").build()
         val response = try {
             client.send(request, HttpResponse.BodyHandlers.ofInputStream())
         } catch (e: Exception) {

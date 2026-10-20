@@ -138,7 +138,7 @@ class JavaFxPlayer(private val convertDir: File) : AudioPlayer {
                 c.instanceFollowRedirects = false
                 c.connectTimeout = 10_000
                 c.readTimeout = 10_000
-                c.setRequestProperty("User-Agent", "AfterhoursNex/1.0.0 (desktop podcast player)")
+                c.setRequestProperty("User-Agent", "AfterhoursNex/${app.afterhours.core.AppInfo.VERSION} (desktop podcast player)")
                 c.setRequestProperty("Range", "bytes=0-0")
                 val next = c.getHeaderField("Location")
                 if (c.responseCode in 300..399 && next != null) url = URI(url).resolve(next).toString() else return url

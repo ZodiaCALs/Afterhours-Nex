@@ -19,7 +19,7 @@ class PlaybackService : MediaSessionService() {
         // Podcast links often redirect through trackers, sometimes from http to https.
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("AfterhoursNex/1.0.0 (Android podcast player)")
+            .setUserAgent("AfterhoursNex/${app.afterhours.core.AppInfo.VERSION} (Android podcast player)")
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http)))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
