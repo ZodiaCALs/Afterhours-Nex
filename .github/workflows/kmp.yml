@@ -58,6 +58,9 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "ANDROID_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - name: Note the repository, for the update checker
+        shell: bash
+        run: perl -pi -e 's|const val REPO = ""|const val REPO = "$ENV{GITHUB_REPOSITORY}"|' shared/src/commonMain/kotlin/app/afterhours/core/Model.kt
       - run: gradle :androidApp:assembleRelease :androidApp:bundleRelease --stacktrace
       - name: Name the files after the version
         run: |
@@ -102,6 +105,9 @@ jobs:
       - name: Tools for .rpm packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y rpm fakeroot
+      - name: Note the repository, for the update checker
+        shell: bash
+        run: perl -pi -e 's|const val REPO = ""|const val REPO = "$ENV{GITHUB_REPOSITORY}"|' shared/src/commonMain/kotlin/app/afterhours/core/Model.kt
       - run: gradle ${{ matrix.tasks }} --stacktrace
       - name: Gather the installers and portable archives
         run: |

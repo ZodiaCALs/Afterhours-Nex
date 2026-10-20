@@ -49,7 +49,7 @@ The desktop installers include their own Java runtime and FFmpeg, so there's not
 - **AfterhoursNex Web (`web/`):** the lightest way to run it, in a browser, with a helper that uses only Python's standard library and about 30 MB of memory. Run `python3 web/afterhoursnex-web.py`. Releases include it as `AfterhoursNex-<version>-Web.zip`.
 - **A light desktop player:** the bundled FFmpeg decodes, and Java's own sound output plays. JavaFX is used only if that FFmpeg can't open https addresses.
 - **Your own audio:** import MP3, AAC, Ogg, Opus, FLAC, WAV and other files; they gather in "On this device".
-- **Update checker:** once a day, a look for a new release on GitHub (Settings › Updates). Builds from GitHub Actions know their repository; for a local build, set it in Settings or build with `-Pafterhours.repo=owner/name`.
+- **Update checker:** once a day, a look for a new release on GitHub (Settings › Updates). Builds from GitHub Actions know their repository (the workflow fills in `AppInfo.REPO`); for a local build, set it in Settings › Updates.
 - **The same everywhere:** on Android, Settings › Your computer pairs the phone with the desktop app's phone link, and the phone gets the computer's auto captions and video podcasts over Wi-Fi.
 - **Radio:** public FM and AM stations, live, by region, from the Radio Browser directory.
 - **Topic search:** single episodes about any topic, as well as shows, and a preview of any show before you add it.

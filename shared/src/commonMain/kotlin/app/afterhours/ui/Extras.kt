@@ -221,8 +221,8 @@ fun UpdateSettings(app: AppState) {
     SwitchRow(tr("Check for updates"), tr("Once a day, AfterhoursNex looks for a new release on GitHub. Nothing else is sent."), s.checkUpdates) { on ->
         app.library.updateSettings { it.copy(checkUpdates = on) }
     }
-    if (BuildInfo.REPO.isBlank() || s.pro) {
-        var repo by remember { mutableStateOf(s.updateRepo.ifBlank { BuildInfo.REPO }) }
+    if (AppInfo.REPO.isBlank() || s.pro) {
+        var repo by remember { mutableStateOf(s.updateRepo.ifBlank { AppInfo.REPO }) }
         SearchBox(repo, { v -> repo = v; app.library.updateSettings { it.copy(updateRepo = v.trim()) } }, tr("GitHub repository, such as owner/Afterhours-Nex"),
             onSubmit = { app.checkUpdates(force = true) }, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), icon = WebIcons.Link, height = 36.dp)
     }

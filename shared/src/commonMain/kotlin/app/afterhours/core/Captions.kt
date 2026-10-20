@@ -45,6 +45,21 @@ interface CaptionEngine {
      */
     suspend fun transcribe(url: String, startMs: Long, durationMs: Long, options: AsrOptions,
                            status: (String, Float) -> Unit, onCues: (List<Cue>) -> Unit)
+    /** How much space a downloaded model takes (0 when it isn't downloaded). */
+    fun modelBytes(name: String): Long = 0
+    suspend fun download(name: String, status: (String, Float) -> Unit) {}
+    fun delete(name: String): Boolean = false
+    /** Lets go of the loaded model, so its memory goes back to the system. */
+    fun release() {}
+}
+
+/** Translation language packs kept on this device (Argos Translate's, which a local LibreTranslate server uses). */
+interface LanguagePacks {
+    val available: Boolean
+    suspend fun installed(): List<String>
+    suspend fun catalog(): List<String>
+    suspend fun install(pack: String): Boolean
+    suspend fun remove(pack: String): Boolean
 }
 
 /** Reads captions and transcripts: WebVTT, SubRip, and the podcast namespace's JSON. */

@@ -172,7 +172,7 @@ class AppState(val platform: Platform, val scope: CoroutineScope) {
     fun checkUpdates(force: Boolean) {
         val s = library.settings.value
         if (!force && (!s.checkUpdates || Clock.now() - s.lastUpdateCheck < 20 * 3_600_000L)) return
-        val repo = s.updateRepo.ifBlank { BuildInfo.REPO }
+        val repo = s.updateRepo.ifBlank { AppInfo.REPO }
         if (repo.isBlank()) { if (force) updateNote = "Add the GitHub repository AfterhoursNex is released from."; return }
         updateNote = if (force) "Checking…" else ""
         work.launch {

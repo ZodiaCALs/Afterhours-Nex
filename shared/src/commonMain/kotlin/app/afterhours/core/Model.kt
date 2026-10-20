@@ -90,6 +90,8 @@ class FetchException(message: String) : Exception(message)
 object AppInfo {
     const val NAME = "AfterhoursNex"
     const val VERSION = "1.2.0"
+    /** The GitHub repository releases come from ("owner/name"), for the update checker. The release workflow fills it in. */
+    const val REPO = ""
     const val SLOGAN = "How many times do I have left to see you again in my life?"
 }
 
